@@ -33,16 +33,21 @@ jobs:
           OCI_HOST: ${{ secrets.OCI_HOST }}
           OCI_USER: ${{ secrets.OCI_USER }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" 'bash -s' <<'REMOTE'
-          set -eu
-          DB=/opt/ichirikutoku/data/progress.db
-          echo "=== tables ==="
-          sqlite3 "$DB" '.tables'
-          echo "=== schema ==="
-          sqlite3 "$DB" '.schema'
-          echo "=== row counts ==="
-          for t in $(sqlite3 "$DB" "select name from sqlite_master where type='table' and name not like 'sqlite_%';"); do
-            printf '%s: ' "$t"
-            sqlite3 "$DB" "select count(*) from \"$t\";"
-          done
-          REMOTE
+          ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" 'python3 -' <<'PY'
+          import sqlite3
+          db="/opt/ichirikutoku/data/progress.db"
+          con=sqlite3.connect(db)
+          cur=con.cursor()
+          print("=== schema ===")
+          rows=cur.execute("select name, sql from sqlite_master where type='table' order by name").fetchall()
+          for name,sql in rows:
+              print(name)
+              print(sql)
+          print("=== row counts ===")
+          for name,_ in rows:
+              if name.startswith("sqlite_"):
+                  continue
+              n=cur.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
+              print(f"{name}: {n}")
+          con.close()
+          PY
