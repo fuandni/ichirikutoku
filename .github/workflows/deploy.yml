@@ -51,9 +51,9 @@ jobs:
           raw = text[start:end+1]
           q = json.loads(raw)
 
-          if len(q) != 198:
+          if len(q) != 75:
               raise SystemExit(
-                  f"問題数が198ではありません: {len(q)}"
+                  f"問題数が75ではありません: {len(q)}"
               )
 
           ids = [x.get("id") for x in q]
