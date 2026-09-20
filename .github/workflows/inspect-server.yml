@@ -69,3 +69,5 @@ jobs:
           print("CORRECT_IDS",json.dumps(correct,ensure_ascii=False))
           print("REMAINING_IDS",json.dumps(wrong+unanswered,ensure_ascii=False))
           PY
+
+# manual inspection trigger: 2026-09-21 v2 preparation
