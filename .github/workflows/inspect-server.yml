@@ -1,4 +1,4 @@
-name: Inspect quiz progress schema
+name: Inspect remaining quiz questions
 
 on:
   push:
@@ -27,27 +27,45 @@ jobs:
           printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Inspect progress database schema
+      - name: Compare current answers with deployed questions
         shell: bash
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
           OCI_USER: ${{ secrets.OCI_USER }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" 'python3 -' <<'PY'
-          import sqlite3
-          db="/opt/ichirikutoku/data/progress.db"
-          con=sqlite3.connect(db)
-          cur=con.cursor()
-          print("=== schema ===")
-          rows=cur.execute("select name, sql from sqlite_master where type='table' order by name").fetchall()
-          for name,sql in rows:
-              print(name)
-              print(sql)
-          print("=== row counts ===")
-          for name,_ in rows:
-              if name.startswith("sqlite_"):
-                  continue
-              n=cur.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
-              print(f"{name}: {n}")
+          import json, sqlite3
+          from pathlib import Path
+
+          html=Path("/var/www/ichirikutoku/index.html").read_text(encoding="utf-8")
+          marker="const Q="
+          start=html.index(marker)+len(marker)
+          end=html.index("];", start)+1
+          questions=json.loads(html[start:end])
+
+          con=sqlite3.connect("/opt/ichirikutoku/data/progress.db")
+          row=con.execute("select db_json from state where id=1").fetchone()
           con.close()
+          db=json.loads(row[0]) if row and row[0] else {"mastery":{}}
+          mastery=db.get("mastery") or {}
+
+          correct=[]
+          wrong=[]
+          unanswered=[]
+          for q in questions:
+              m=mastery.get(q["id"])
+              if not m or m.get("lastChoice") is None:
+                  unanswered.append(q["id"])
+              elif int(m["lastChoice"])==int(q["answer"]):
+                  correct.append(q["id"])
+              else:
+                  wrong.append(q["id"])
+
+          print("TOTAL",len(questions))
+          print("CORRECT",len(correct))
+          print("WRONG",len(wrong))
+          print("UNANSWERED",len(unanswered))
+          print("REMAINING",len(wrong)+len(unanswered))
+          print("CORRECT_IDS",json.dumps(correct,ensure_ascii=False))
+          print("REMAINING_IDS",json.dumps(wrong+unanswered,ensure_ascii=False))
           PY
