@@ -1156,6 +1156,7 @@ const EX_STOPWORDS=new Set([
 ]);
 
 function questionFormat(q){
+  if(q.solveMode==='calculation') return 'calc';
   const st=q.stemText||'';
   const compact=st.replace(/[\s　]+/g,'');
   if(/このうち(?:正しい|誤っている)もの/.test(compact)) return 'tf';
