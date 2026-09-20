@@ -572,7 +572,11 @@ const CHOICE_TEXT_CORRECTIONS={};
 const EXPLANATION_CORRECTIONS={};
 const CHOICE_REASON_CORRECTIONS={};
 Q.forEach(q=>{});
-function sourceCheckedStem(q){return q.stemText||'本文は原文画像で確認してください。';}
+function sourceCheckedStem(q){
+  const stem=(q.stemText||'').trim();
+  if(!stem) throw new Error(`stemText missing: ${q.id}`);
+  return q.stemText;
+}
 
 const AS={unknown:'未知',understanding:'理解不足',recall:'想起不足',guess:'勘・消去法',low:'低い',medium:'中',high:'高い',certain:'確信'};
 const NO=new Set(['unknown','understanding','recall','guess']),YES=new Set(['low','medium','high','certain']);
@@ -1242,7 +1246,9 @@ function addChoiceReview(root,q,bgText,applyText,fmt){
 
     const reason=document.createElement('div');
     reason.className='choice-review-reason';
-    reason.textContent='根拠：'+(explicitReasons[i] || `個別解説データ未登録：${q.id} 選択肢${num}`);
+    const choiceReason=explicitReasons[i];
+    if(!choiceReason) throw new Error(`choiceReason missing: ${q.id} choice ${num}`);
+    reason.textContent='根拠：'+choiceReason;
     item.append(head,reason);
     wrap.appendChild(item);
   });
