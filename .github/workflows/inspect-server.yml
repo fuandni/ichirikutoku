@@ -1,4 +1,4 @@
-name: Inspect quiz server state location
+name: Inspect quiz progress schema
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
           printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Inspect deployment and locate state implementation
+      - name: Inspect progress database schema
         shell: bash
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
@@ -35,15 +35,14 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" 'bash -s' <<'REMOTE'
           set -eu
-          echo "=== web root ==="
-          ls -lah /var/www/ichirikutoku 2>/dev/null || true
-
-          echo "=== likely application/service files ==="
-          find /opt /srv /home/deployquiz /usr/local /var/www             -maxdepth 4 -type f             \( -name "*.py" -o -name "*.js" -o -name "*.mjs" -o -name "*.cjs" -o -name "*.json" -o -name "*.sqlite" -o -name "*.db" \)             2>/dev/null | sed -n '1,250p'
-
-          echo "=== files containing /api/state ==="
-          grep -RIl --exclude='.env' --exclude='*.key' --exclude='*.pem' --exclude='authorized_keys'             '/api/state' /opt /srv /home/deployquiz /usr/local /var/www 2>/dev/null | sed -n '1,100p' || true
-
-          echo "=== state-like files ==="
-          find /opt /srv /home/deployquiz /var/lib /var/www             -maxdepth 5 -type f             \( -iname '*state*' -o -iname '*quiz*' -o -iname '*ichiriku*' -o -iname '*.sqlite' -o -iname '*.db' \)             2>/dev/null | sed -n '1,250p'
+          DB=/opt/ichirikutoku/data/progress.db
+          echo "=== tables ==="
+          sqlite3 "$DB" '.tables'
+          echo "=== schema ==="
+          sqlite3 "$DB" '.schema'
+          echo "=== row counts ==="
+          for t in $(sqlite3 "$DB" "select name from sqlite_master where type='table' and name not like 'sqlite_%';"); do
+            printf '%s: ' "$t"
+            sqlite3 "$DB" "select count(*) from \"$t\";"
+          done
           REMOTE
