@@ -1,0 +1,49 @@
+name: Inspect quiz server state location
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/inspect-server.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Inspect deployment and locate state implementation
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" 'bash -s' <<'REMOTE'
+          set -eu
+          echo "=== web root ==="
+          ls -lah /var/www/ichirikutoku 2>/dev/null || true
+
+          echo "=== likely application/service files ==="
+          find /opt /srv /home/deployquiz /usr/local /var/www             -maxdepth 4 -type f             \( -name "*.py" -o -name "*.js" -o -name "*.mjs" -o -name "*.cjs" -o -name "*.json" -o -name "*.sqlite" -o -name "*.db" \)             2>/dev/null | sed -n '1,250p'
+
+          echo "=== files containing /api/state ==="
+          grep -RIl --exclude='.env' --exclude='*.key' --exclude='*.pem' --exclude='authorized_keys'             '/api/state' /opt /srv /home/deployquiz /usr/local /var/www 2>/dev/null | sed -n '1,100p' || true
+
+          echo "=== state-like files ==="
+          find /opt /srv /home/deployquiz /var/lib /var/www             -maxdepth 5 -type f             \( -iname '*state*' -o -iname '*quiz*' -o -iname '*ichiriku*' -o -iname '*.sqlite' -o -iname '*.db' \)             2>/dev/null | sed -n '1,250p'
+          REMOTE
