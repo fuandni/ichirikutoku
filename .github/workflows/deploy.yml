@@ -1,0 +1,160 @@
+
+name: Validate and deploy quiz
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "index.html"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ichirikutoku-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate question data
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          p = Path("index.html")
+          if not p.is_file():
+              raise SystemExit("index.html がありません")
+
+          text = p.read_text(encoding="utf-8")
+
+          marker = "const Q="
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit("const Q= が見つかりません")
+
+          start += len(marker)
+          end = text.find("];", start)
+          if end < 0:
+              raise SystemExit("問題配列の終端が見つかりません")
+
+          raw = text[start:end+1]
+          q = json.loads(raw)
+
+          if len(q) != 198:
+              raise SystemExit(
+                  f"問題数が198ではありません: {len(q)}"
+              )
+
+          ids = [x.get("id") for x in q]
+          if len(ids) != len(set(ids)):
+              raise SystemExit("問題IDが重複しています")
+
+          print(f"Question validation OK: {len(q)} questions")
+          PY
+
+      - name: Validate JavaScript syntax
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path("index.html").read_text(encoding="utf-8")
+          scripts = re.findall(
+              r"<script(?:\s[^>]*)?>(.*?)</script>",
+              text,
+              flags=re.I | re.S
+          )
+
+          if not scripts:
+              raise SystemExit("script要素が見つかりません")
+
+          Path("/tmp/quiz.js").write_text(
+              "\n".join(scripts),
+              encoding="utf-8"
+          )
+
+          print(f"Extracted {len(scripts)} script block(s)")
+          PY
+
+          node --check /tmp/quiz.js
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          scp \
+            -i ~/.ssh/id_ed25519 \
+            index.html \
+            "${OCI_USER}@${OCI_HOST}:/home/deployquiz/index.html.upload"
+
+      - name: Deploy
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            "${OCI_USER}@${OCI_HOST}" \
+            'sudo /usr/local/sbin/deploy-ichirikutoku'
+
+      - name: Verify deployed file
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          LOCAL_SHA="$(sha256sum index.html | awk '{print $1}')"
+
+          REMOTE_SHA="$(
+            ssh \
+              -i ~/.ssh/id_ed25519 \
+              "${OCI_USER}@${OCI_HOST}" \
+              "sha256sum /var/www/ichirikutoku/index.html | awk '{print \$1}'"
+          )"
+
+          echo "Local : $LOCAL_SHA"
+          echo "Remote: $REMOTE_SHA"
+
+          test "$LOCAL_SHA" = "$REMOTE_SHA"
+
+      - name: Verify web service
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 5 \
+            --retry-delay 2 \
+            "https://${OCI_HOST}/health"
