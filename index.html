@@ -510,8 +510,8 @@ body.compact-home header{display:none!important}
 .sync-status.ok{background:#175c3a}.sync-status.busy{background:#70551c}.sync-status.offline{background:#555}.sync-status.error{background:#7c1f27}
 #homeTop{margin-left:0!important}
 @media(max-width:700px){.sync-status{font-size:10px;padding:3px 6px}.topbar{gap:5px!important}#debugVersion{max-width:46vw;overflow:hidden;text-overflow:ellipsis}}
-</style></head><body><div class="topbar"><div id="debugVersion">v1 • Sync</div><div class="brand">一陸特 無線工学 問題集</div><div class="muted">198問 / 弱点復習版 / 自動同期</div><div id="syncStatus" class="sync-status" title="同期状態">同期準備中</div><button id="homeTop">トップへ</button></div>
-<div class="wrap"><section id="home" class="view active"><div class="panel hero"><div><h1>無線工学 過去問演習</h1><p>令和5年10月〜令和8年6月、午前A・午後Bの18セットを収録。年別・分野別・弱点別に演習できます。</p><p class="qmeta">回答後に、背景・原理の詳細解説と、この問題への具体的な当てはめを表示します。<br><span class="small">問題文は提供された過去問PDFに基づき、背景解説は学習用に補足しています。問題文・正答表示と重複する情報や一般的な解答手順は解説欄から省いています。</span> 回答履歴と自信度はブラウザ内に保存されます。</p></div><div class="stats"><div class="stat"><span>収録</span><b id="focusTotalStat">198</b><small>問</small></div><div class="stat"><span>回答経験</span><b id="masteredStat">0</b><small>問</small></div><div class="stat"><span>累積正解数</span><b id="globalRate">0</b><small>回</small></div></div></div>
+</style></head><body><div class="topbar"><div id="debugVersion">v2 • Sync</div><div class="brand">一陸特 無線工学 問題集</div><div class="muted">75問 / 残り問題版 / 自動同期</div><div id="syncStatus" class="sync-status" title="同期状態">同期準備中</div><button id="homeTop">トップへ</button></div>
+<div class="wrap"><section id="home" class="view active"><div class="panel hero"><div><h1>無線工学 過去問演習</h1><p>令和5年10月〜令和8年6月、午前A・午後Bの18セットを収録。年別・分野別・弱点別に演習できます。</p><p class="qmeta">回答後に、背景・原理の詳細解説と、この問題への具体的な当てはめを表示します。<br><span class="small">問題文は提供された過去問PDFに基づき、背景解説は学習用に補足しています。問題文・正答表示と重複する情報や一般的な解答手順は解説欄から省いています。</span> 回答履歴と自信度はブラウザ内に保存されます。</p></div><div class="stats"><div class="stat"><span>収録</span><b id="focusTotalStat">75</b><small>問</small></div><div class="stat"><span>回答経験</span><b id="masteredStat">0</b><small>問</small></div><div class="stat"><span>累積正解数</span><b id="globalRate">0</b><small>回</small></div></div></div>
 <div class="panel latest-session-panel" id="latestSessionPanel">
   <div class="section-title">直近の演習</div>
   <div class="latest-session-row">
@@ -577,7 +577,7 @@ function sourceCheckedStem(q){return q.stemText||'本文は原文画像で確認
 const AS={unknown:'未知',understanding:'理解不足',recall:'想起不足',guess:'勘・消去法',low:'低い',medium:'中',high:'高い',certain:'確信'};
 const NO=new Set(['unknown','understanding','recall','guess']),YES=new Set(['low','medium','high','certain']);
 const STORE='ichirikutoku_bank_v1_focus',SESSION=STORE+'_session',CLOUD_META=STORE+'_cloud_meta';
-const SESSION_SCHEMA=2, BUILD_ID='20260920-lightsail-v1';
+const SESSION_SCHEMA=2, BUILD_ID='20260921-remaining-v2';
 function loadJson(key,fallback){try{const value=JSON.parse(localStorage.getItem(key)||'null');return value&&typeof value==='object'?value:fallback}catch(e){return fallback}}
 let db=loadJson(STORE,{mastery:{},attempts:[]});if(!db.mastery||typeof db.mastery!=='object')db.mastery={};if(!Array.isArray(db.attempts))db.attempts=[];
 let cloudMeta=loadJson(CLOUD_META,{sessionUpdatedAt:0});if(!Number.isFinite(Number(cloudMeta.sessionUpdatedAt)))cloudMeta.sessionUpdatedAt=0;
@@ -821,7 +821,7 @@ function createFocusHtml(){
   const qJson=JSON.stringify(questions);
   doc=doc.replace(/const Q=\[[\s\S]*?\];\nconst /, 'const Q='+qJson+';\\nconst ');
   doc=doc.replace(/BUILD_ID='[^']+'/, "BUILD_ID='20260919e-focus'");
-  doc=doc.replace(/v1 • Sync/g, 'v1 • Sync');
+  doc=doc.replace(/v2 • Sync/g, 'v2 • Sync');
   doc=doc.replace(/弱点復習版 v22/g, '弱点復習版 v22');
   doc=doc.replace(/const STORE='([^']+)'/, (m,s)=>`const STORE='${s}_focus'`);
   doc=doc.replace(/<button class="action compact-action focus-build" id="buildFocusHtml">[\s\S]*?<\/button>/, '');
@@ -872,7 +872,7 @@ let selectedTopics=new Set();
 
 function baseDebug(){
   const v=document.getElementById('debugVersion');
-  if(v) v.textContent='v1 • Sync';
+  if(v) v.textContent='v2 • Sync';
 }
 
 function openTopicSelector(field){
