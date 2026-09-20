@@ -60,7 +60,92 @@ jobs:
           if len(ids) != len(set(ids)):
               raise SystemExit("問題IDが重複しています")
 
-          print(f"Question validation OK: {len(q)} questions")
+          errors = []
+          non_tf_count = 0
+          for i, item in enumerate(q, start=1):
+              qid = item.get("id") or f"#index-{i}"
+
+              if not isinstance(item.get("id"), str) or not item["id"].strip():
+                  errors.append(f"{qid}: id が空です")
+
+              stem = item.get("stemText")
+              if not isinstance(stem, str) or not stem.strip():
+                  errors.append(f"{qid}: stemText が空です")
+
+              choices = item.get("choices")
+              choice_texts = item.get("choiceTexts")
+              if not isinstance(choices, int) or choices < 2:
+                  errors.append(f"{qid}: choices が不正です: {choices!r}")
+              if not isinstance(choice_texts, list):
+                  errors.append(f"{qid}: choiceTexts が配列ではありません")
+              elif isinstance(choices, int) and len(choice_texts) != choices:
+                  errors.append(
+                      f"{qid}: choices={choices} に対して choiceTexts={len(choice_texts)}"
+                  )
+              elif any(not isinstance(x, str) or not x.strip() for x in choice_texts):
+                  errors.append(f"{qid}: 空の選択肢があります")
+
+              answer = item.get("answer")
+              if (
+                  not isinstance(answer, int)
+                  or not isinstance(choices, int)
+                  or answer < 1
+                  or answer > choices
+              ):
+                  errors.append(f"{qid}: answer が選択肢範囲外です: {answer!r}")
+
+              explanation = item.get("explanation")
+              if not isinstance(explanation, str) or not explanation.strip():
+                  errors.append(f"{qid}: explanation が空です")
+
+              solve_mode = item.get("solveMode")
+              if solve_mode not in {"calculation", "text"}:
+                  errors.append(f"{qid}: solveMode が不正です: {solve_mode!r}")
+
+              compact = "".join((stem or "").split())
+              is_tf = (
+                  "このうち正しいもの" in compact
+                  or "このうち誤っているもの" in compact
+              )
+
+              reasons = item.get("choiceReasons")
+              if not is_tf:
+                  non_tf_count += 1
+                  if not isinstance(reasons, list):
+                      errors.append(f"{qid}: 非正誤問題なのに choiceReasons がありません")
+                  elif isinstance(choice_texts, list) and len(reasons) != len(choice_texts):
+                      errors.append(
+                          f"{qid}: choiceReasons={len(reasons)} / choiceTexts={len(choice_texts)}"
+                      )
+                  elif any(not isinstance(x, str) or not x.strip() for x in reasons):
+                      errors.append(f"{qid}: 空の choiceReason があります")
+              elif isinstance(reasons, list):
+                  if isinstance(choice_texts, list) and len(reasons) != len(choice_texts):
+                      errors.append(
+                          f"{qid}: choiceReasons={len(reasons)} / choiceTexts={len(choice_texts)}"
+                      )
+
+          if non_tf_count != 60:
+              errors.append(f"非正誤問題数が60ではありません: {non_tf_count}")
+
+          forbidden = [
+              "個別解説データ未登録",
+              "本文は原文画像で確認してください",
+              "選択肢 1（原文画像を参照）",
+          ]
+          for token in forbidden:
+              if token in text:
+                  errors.append(f"仮置き文が残っています: {token}")
+
+          if errors:
+              raise SystemExit(
+                  "問題データ検証エラー:\n- " + "\n- ".join(errors)
+              )
+
+          print(
+              f"Question validation OK: {len(q)} questions, "
+              f"{non_tf_count} non-TF questions"
+          )
           PY
 
       - name: Validate JavaScript syntax
