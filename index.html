@@ -38,7 +38,7 @@
   }
   #homeTop::after{content:"⌂";font-size:25px}
   main,.wrap,.container{max-width:none!important}
-  #quizView,#resultView{padding-left:10px!important;padding-right:10px!important}
+  #quiz,#resultView{padding-left:10px!important;padding-right:10px!important}
   .question,.question-card,.card{scroll-margin-top:60px}
 }
 body.compact-home header{display:none!important}
@@ -510,20 +510,20 @@ body.compact-home header{display:none!important}
 .sync-status.ok{background:#175c3a}.sync-status.busy{background:#70551c}.sync-status.offline{background:#555}.sync-status.error{background:#7c1f27}
 #homeTop{margin-left:0!important}
 @media(max-width:700px){.sync-status{font-size:10px;padding:3px 6px}.topbar{gap:5px!important}#debugVersion{max-width:46vw;overflow:hidden;text-overflow:ellipsis}}
-</style></head><body><div class="topbar"><div id="debugVersion">v2 • Sync</div><div class="brand">一陸特 無線工学 問題集</div><div class="muted">75問 / 残り問題版 / 自動同期</div><div id="syncStatus" class="sync-status" title="同期状態">同期準備中</div><button id="homeTop">トップへ</button></div>
-<div class="wrap"><section id="home" class="view active"><div class="panel hero"><div><h1>無線工学 過去問演習</h1><p>令和5年10月〜令和8年6月、午前A・午後Bの18セットを収録。年別・分野別・弱点別に演習できます。</p><p class="qmeta">回答後に、背景・原理の詳細解説と、この問題への具体的な当てはめを表示します。<br><span class="small">問題文は提供された過去問PDFに基づき、背景解説は学習用に補足しています。問題文・正答表示と重複する情報や一般的な解答手順は解説欄から省いています。</span> 回答履歴と自信度はブラウザ内に保存されます。</p></div><div class="stats"><div class="stat"><span>収録</span><b id="focusTotalStat">75</b><small>問</small></div><div class="stat"><span>回答経験</span><b id="masteredStat">0</b><small>問</small></div><div class="stat"><span>累積正解数</span><b id="globalRate">0</b><small>回</small></div></div></div>
-<div class="panel latest-session-panel" id="latestSessionPanel">
+</style></head><body><div class="topbar"><div id="debugVersion">v2 • Sync</div><div class="brand">一陸特 無線工学 問題集</div><div class="muted"><span id="topQuestionCount">75</span>問 / 残り問題版 / 自動同期</div><div id="syncStatus" class="sync-status" title="同期状態">同期準備中</div><button id="homeTop">トップへ</button></div>
+<div class="wrap"><section id="home" class="view active"><div class="panel hero"><div><h1>無線工学 過去問演習</h1><p>令和5年10月〜令和8年6月の過去問から、現在の復習対象75問を収録。年別・分野別・弱点別に演習できます。</p><p class="qmeta">回答後に、背景・原理の詳細解説と、この問題への具体的な当てはめを表示します。<br><span class="small">問題文は提供された過去問PDFに基づき、背景解説は学習用に補足しています。問題文・正答表示と重複する情報や一般的な解答手順は解説欄から省いています。</span> 回答履歴と自信度はブラウザ内に保存されます。</p></div><div class="stats"><div class="stat"><span>収録</span><b id="focusTotalStat">75</b><small>問</small></div><div class="stat"><span>回答経験</span><b id="masteredStat">0</b><small>問</small></div><div class="stat"><span>累積正解数</span><b id="globalRate">0</b><small>回</small></div></div></div>
+<div class="panel latest-session-panel" id="latestSessionPanel" hidden>
   <div class="section-title">直近の演習</div>
   <div class="latest-session-row">
     <div>
-      <b id="latestSessionTitle">分野別：送受信・通信設備 / 8論点</b>
-      <div class="qmeta" id="latestSessionMeta">完了済み / 70/70問 / 56/70 (80%) / 2026/9/19 21:28:51</div>
+      <b id="latestSessionTitle">直近の演習</b>
+      <div class="qmeta" id="latestSessionMeta">保存された演習がある場合に表示します。</div>
     </div>
     <button class="primarybtn" id="resumeLatest">前回の結果を再表示</button>
   </div>
   <p class="qmeta latest-session-note">この詳細データは直近1セッションだけ保持します。新しい演習で最初の回答をした時点で置き換わります。</p>
 </div>
-<div class="panel"><div class="section-title">年・試験回から解く</div><div class="exam-grid"><button class="exam-card" data-exam="R0510A"><b>令和5年10月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0510B"><b>令和5年10月 B</b><span>24問</span></button><button class="exam-card" data-exam="R0602A"><b>令和6年2月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0602B"><b>令和6年2月 B</b><span>24問</span></button><button class="exam-card" data-exam="R0606A"><b>令和6年6月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0606B"><b>令和6年6月 B</b><span>24問</span></button><button class="exam-card" data-exam="R0610A"><b>令和6年10月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0610B"><b>令和6年10月 B</b><span>24問</span></button><button class="exam-card" data-exam="R0702A"><b>令和7年2月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0702B"><b>令和7年2月 B</b><span>24問</span></button><button class="exam-card" data-exam="R0706A"><b>令和7年6月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0706B"><b>令和7年6月 B</b><span>24問</span></button><button class="exam-card" data-exam="R0710A"><b>令和7年10月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0710B"><b>令和7年10月 B</b><span>24問</span></button><button class="exam-card" data-exam="R0802A"><b>令和8年2月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0802B"><b>令和8年2月 B</b><span>24問</span></button><button class="exam-card" data-exam="R0806A"><b>令和8年6月 A</b><span>24問</span></button><button class="exam-card" data-exam="R0806B"><b>令和8年6月 B</b><span>24問</span></button></div></div>
+<div class="panel"><div class="section-title">年・試験回から解く</div><div class="exam-grid"><button class="exam-card" data-exam="R0510A"><b>令和5年10月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0510B"><b>令和5年10月 B</b><span>—問</span></button><button class="exam-card" data-exam="R0602A"><b>令和6年2月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0602B"><b>令和6年2月 B</b><span>—問</span></button><button class="exam-card" data-exam="R0606A"><b>令和6年6月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0606B"><b>令和6年6月 B</b><span>—問</span></button><button class="exam-card" data-exam="R0610A"><b>令和6年10月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0610B"><b>令和6年10月 B</b><span>—問</span></button><button class="exam-card" data-exam="R0702A"><b>令和7年2月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0702B"><b>令和7年2月 B</b><span>—問</span></button><button class="exam-card" data-exam="R0706A"><b>令和7年6月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0706B"><b>令和7年6月 B</b><span>—問</span></button><button class="exam-card" data-exam="R0710A"><b>令和7年10月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0710B"><b>令和7年10月 B</b><span>—問</span></button><button class="exam-card" data-exam="R0802A"><b>令和8年2月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0802B"><b>令和8年2月 B</b><span>—問</span></button><button class="exam-card" data-exam="R0806A"><b>令和8年6月 A</b><span>—問</span></button><button class="exam-card" data-exam="R0806B"><b>令和8年6月 B</b><span>—問</span></button></div></div>
 <div class="panel">
 <div class="field-title-row">
   <div class="section-title">分野から解く</div>
@@ -537,12 +537,12 @@ body.compact-home header{display:none!important}
   <button class="action compact-action" id="downloadAllQuestionText"><b>全問題テキストTXT保存</b><span class="qmeta">弱点抽出・再構成用</span></button>
   
 </div>
-<div class="field-grid"><button class="field-card" data-field="通信方式・基礎"><b>通信方式・基礎</b><span>36問</span><span class="latest-rate">最新正答率：100%（36/36）</span></button><button class="field-card" data-field="電気・電子回路"><b>電気・電子回路</b><span>90問</span><span class="latest-rate incomplete">最新正答率：－（48/90問回答済み）</span></button><button class="field-card" data-field="送受信・通信設備"><b>送受信・通信設備</b><span>126問</span><span class="latest-rate">最新正答率：76%（96/126）</span></button><button class="field-card" data-field="レーダー"><b>レーダー</b><span>36問</span><span class="latest-rate">最新正答率：83%（30/36）</span></button><button class="field-card" data-field="アンテナ・電波伝搬"><b>アンテナ・電波伝搬</b><span>90問</span><span class="latest-rate incomplete">最新正答率：－（88/90問回答済み）</span></button><button class="field-card" data-field="電源・測定"><b>電源・測定</b><span>54問</span><span class="latest-rate">最新正答率：83%（45/54）</span></button></div></div>
+<div class="field-grid"><button class="field-card" data-field="通信方式・基礎"><b>通信方式・基礎</b><span>—問</span><span class="latest-rate">最新正答率：—</span></button><button class="field-card" data-field="電気・電子回路"><b>電気・電子回路</b><span>—問</span><span class="latest-rate">最新正答率：—</span></button><button class="field-card" data-field="送受信・通信設備"><b>送受信・通信設備</b><span>—問</span><span class="latest-rate">最新正答率：—</span></button><button class="field-card" data-field="レーダー"><b>レーダー</b><span>—問</span><span class="latest-rate">最新正答率：—</span></button><button class="field-card" data-field="アンテナ・電波伝搬"><b>アンテナ・電波伝搬</b><span>—問</span><span class="latest-rate">最新正答率：—</span></button><button class="field-card" data-field="電源・測定"><b>電源・測定</b><span>—問</span><span class="latest-rate">最新正答率：—</span></button></div></div>
 
 <div class="panel"><div class="section-title">解答方式から解く</div>
 <div class="mode-grid">
-<button class="action" id="textModeAction"><b>文章・知識だけで解く</b><span class="qmeta">数値計算なしで正答を確定できる問題　332問</span></button>
-<button class="action" id="calcModeAction"><b>計算が必要な問題だけ解く</b><span class="qmeta">正答の確定に数値演算が必要な問題　100問</span></button>
+<button class="action" id="textModeAction"><b>文章・知識だけで解く</b><span class="qmeta">数値計算なしで正答を確定できる問題　<span id="textModeCount">—</span>問</span></button>
+<button class="action" id="calcModeAction"><b>計算が必要な問題だけ解く</b><span class="qmeta">正答の確定に数値演算が必要な問題　<span id="calcModeCount">—</span>問</span></button>
 </div>
 <p class="qmeta mode-note">分類基準：数値が登場するかではなく、正答を確定するために数値演算が必須かどうか。</p>
 </div>
@@ -778,6 +778,15 @@ function renderHome(){
   const focusIds=new Set(Q.map(q=>q.id));
   let vals=Object.entries(db.mastery).filter(([id])=>focusIds.has(id)).map(([,v])=>v),done=vals.filter(x=>x.attempts>0),tot=done.reduce((s,x)=>s+x.attempts,0),cor=done.reduce((s,x)=>s+x.correct,0);
   const focusTotalStat=document.getElementById('focusTotalStat');if(focusTotalStat)focusTotalStat.textContent=Q.length;
+  const topQuestionCount=document.getElementById('topQuestionCount');if(topQuestionCount)topQuestionCount.textContent=Q.length;
+  document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
+    const qs=Q.filter(q=>q.examCode===card.dataset.exam);
+    card.style.display=qs.length?'':'none';
+    const count=card.querySelector('span');
+    if(count)count.textContent=`${qs.length}問`;
+  });
+  const textModeCount=document.getElementById('textModeCount');if(textModeCount)textModeCount.textContent=Q.filter(q=>q.solveMode==='text').length;
+  const calcModeCount=document.getElementById('calcModeCount');if(calcModeCount)calcModeCount.textContent=Q.filter(q=>q.solveMode==='calculation').length;
   masteredStat.textContent=done.length;globalRate.textContent=cor;
   document.querySelectorAll('.field-card[data-field]').forEach(card=>{
     const field=card.dataset.field,qs=Q.filter(q=>q.field===field);
@@ -841,7 +850,7 @@ function openTopicSelector(field){
     const topicQs=qs.filter(q=>topics.includes(q.topic));
     const stat=latestAnswerStats(topicQs);
     const hasWrittenCalc=topicQs.some(q=>q.calcLevel==='written');
-    b.innerHTML=`<b></b><span>${detail}</span><span class="latest-rate ${(!countUnansweredWrong&&!stat.complete)?'incomplete':''} ${countUnansweredWrong?'strict':''}"></span>${hasWrittenCalc?'<em class="calc-mark" title="暗算以上の計算問題を含む">計</em>':''}<i class="topic-check">✓</i>`;
+    b.innerHTML=`<b></b><span>${detail}</span><span class="latest-rate">最新正答率：—</span>${hasWrittenCalc?'<em class="calc-mark" title="暗算以上の計算問題を含む">計</em>':''}<i class="topic-check">✓</i>`;
     b.querySelector('b').textContent=label;
     b.querySelector('.latest-rate').textContent=latestRateText(topicQs);
     b.onclick=()=>{
@@ -989,8 +998,8 @@ function updateCompactHeader(v){
     else {
       let pos='';
       try{
-        if(typeof current!=='undefined' && Array.isArray(current) && typeof idx!=='undefined')
-          pos=(idx+1)+' / '+current.length;
+        if(attempt && Array.isArray(attempt.ids) && typeof idx!=='undefined')
+          pos=(idx+1)+' / '+attempt.ids.length;
       }catch(e){}
       sub.textContent=pos||'演習';
     }
@@ -1056,7 +1065,7 @@ function applyABCChips(){
 
 /* v9 hook: formatting runs after each question render without changing answer logic */
 (function(){
-  const target=document.getElementById('quizView')||document.body;
+  const target=document.getElementById('quiz')||document.body;
   let pending=false;
   new MutationObserver(()=>{
     if(pending) return;
