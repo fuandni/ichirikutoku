@@ -770,74 +770,6 @@ function downloadAllQuestionText(){
 }
 
 
-function latestStateForQuestion(q){
-  const m=db.mastery[q.id];
-  if(!m || m.lastChoice==null) return {answered:false,correct:false,wrong:true,choice:null};
-  const correct=Number(m.lastChoice)===Number(q.answer);
-  return {answered:true,correct,wrong:!correct,choice:m.lastChoice};
-}
-function topicRateWithUnansweredWrong(qs){
-  const total=qs.length;
-  const correct=qs.reduce((n,q)=>n+(latestStateForQuestion(q).correct?1:0),0);
-  return {total,correct,rate:total?Math.round(correct/total*100):0};
-}
-function isPulseRadarDistanceCalculation(q){
-  if(q.topic!=='パルスレーダー') return false;
-  const s=plainText(q.stemText||q.text||'');
-  const mentionsDistance=/距離|パルス幅|往復|伝搬時間|探知距離/.test(s);
-  const isCalculation=(q.solveMode==='calculation'||q.calcLevel==='mental'||q.calcLevel==='written');
-  return mentionsDistance && isCalculation;
-}
-function buildFocusSelection(){
-  const picked=new Set();
-  const fields=[...new Set(Q.map(q=>q.field))];
-  fields.forEach(field=>{
-    const fqs=Q.filter(q=>q.field===field);
-    [...new Set(fqs.map(q=>q.topic))].forEach(topic=>{
-      const tqs=fqs.filter(q=>q.topic===topic);
-      const stat=topicRateWithUnansweredWrong(tqs);
-      if(stat.rate<=60){
-        tqs.forEach(q=>picked.add(q.id));
-      }else if(stat.rate<=79){
-        if(topic==='パルスレーダー'){
-          tqs.filter(isPulseRadarDistanceCalculation).forEach(q=>picked.add(q.id));
-        }else{
-          tqs.forEach(q=>picked.add(q.id));
-        }
-      }else{
-        tqs.forEach(q=>{
-          if(latestStateForQuestion(q).wrong) picked.add(q.id);
-        });
-      }
-    });
-  });
-  return Q.filter(q=>picked.has(q.id));
-}
-function createFocusHtml(){
-  const questions=buildFocusSelection();
-  if(!questions.length){ alert('抽出対象がありません。'); return; }
-
-  let doc='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
-  const qJson=JSON.stringify(questions);
-  doc=doc.replace(/const Q=\[[\s\S]*?\];\nconst /, 'const Q='+qJson+';\\nconst ');
-  doc=doc.replace(/BUILD_ID='[^']+'/, "BUILD_ID='20260919e-focus'");
-  doc=doc.replace(/v2 • Sync/g, 'v2 • Sync');
-  doc=doc.replace(/弱点復習版 v22/g, '弱点復習版 v22');
-  doc=doc.replace(/const STORE='([^']+)'/, (m,s)=>`const STORE='${s}_focus'`);
-  doc=doc.replace(/<button class="action compact-action focus-build" id="buildFocusHtml">[\s\S]*?<\/button>/, '');
-
-  const byField={};
-  questions.forEach(q=>byField[q.field]=(byField[q.field]||0)+1);
-  const summary=Object.entries(byField).map(([k,v])=>`${k}:${v}問`).join(' / ');
-  const blob=new Blob([doc],{type:'text/html;charset=utf-8'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`ichirikutoku_focus_${questions.length}q_${new Date().toISOString().slice(0,10)}.html`;
-  document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  alert(`弱点復習HTMLを作成しました。\n抽出:${questions.length}問\n${summary}`);
-}
-
 function view(id){
   document.body.classList.toggle('compact-home', id==='home');
   if(typeof updateCompactHeader==='function') updateCompactHeader(id);document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0)}
@@ -1805,8 +1737,6 @@ function restoreSession(){
   return true;
 }
 
-const buildFocusHtmlBtn=document.getElementById('buildFocusHtml');
-if(buildFocusHtmlBtn)buildFocusHtmlBtn.onclick=createFocusHtml;
 const countUnansweredWrongToggle=document.getElementById('countUnansweredWrong');
 if(countUnansweredWrongToggle)countUnansweredWrongToggle.onchange=e=>setRateMode(e.target.checked);
 const copyAllQuestionTextBtn=document.getElementById('copyAllQuestionText');
