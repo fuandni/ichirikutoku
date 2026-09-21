@@ -581,7 +581,7 @@ function sourceCheckedStem(q){
 const AS={unknown:'未知',understanding:'理解不足',recall:'想起不足',guess:'勘・消去法',low:'低い',medium:'中',high:'高い',certain:'確信'};
 const NO=new Set(['unknown','understanding','recall','guess']),YES=new Set(['low','medium','high','certain']);
 const STORE='ichirikutoku_bank_v1_focus',SESSION=STORE+'_session',CLOUD_META=STORE+'_cloud_meta';
-const SESSION_SCHEMA=2, BUILD_ID='20260921-remaining-v2';
+const SESSION_SCHEMA=2, BUILD_ID='20260922-circuit-latest-split-v1';
 function loadJson(key,fallback){try{const value=JSON.parse(localStorage.getItem(key)||'null');return value&&typeof value==='object'?value:fallback}catch(e){return fallback}}
 let db=loadJson(STORE,{mastery:{},attempts:[]});if(!db.mastery||typeof db.mastery!=='object')db.mastery={};if(!Array.isArray(db.attempts))db.attempts=[];
 let cloudMeta=loadJson(CLOUD_META,{sessionUpdatedAt:0});if(!Number.isFinite(Number(cloudMeta.sessionUpdatedAt)))cloudMeta.sessionUpdatedAt=0;
@@ -694,6 +694,16 @@ function setRateMode(on){
 }
 
 
+/* 回路1/2は最新回答の状態で動的に再編する。対象は元から回路1/回路2だった電気・電子回路だけ。 */
+function effectiveTopic(q){
+  if(q && q.field==='電気・電子回路' && (q['topic']==='回路1' || q['topic']==='回路2')){
+    const m=db.mastery[q.id];
+    const latestCorrect=!!(m && m.lastChoice!=null && Number(m.lastChoice)===Number(q.answer));
+    return latestCorrect ? '回路1' : '回路2';
+  }
+  return q?.['topic'] || '';
+}
+
 function questionStatusForExport(q){
   const m=db.mastery[q.id];
   if(!m||m.lastChoice==null){
@@ -727,10 +737,10 @@ function buildAllQuestionText(){
     const fqs=Q.filter(q=>q.field===field);
     const fs=latestAnswerStats(fqs);
     lines.push(`===== 分野: ${field} | ${fs.correct}/${fs.total} (${fs.rate}%) | 未回答:${fs.unanswered} =====`);
-    const topics=[...new Set(fqs.map(q=>q.topic))];
+    const topics=[...new Set(fqs.map(q=>effectiveTopic(q)))];
     topics
       .map(topic=>{
-        const tqs=fqs.filter(q=>q.topic===topic);
+        const tqs=fqs.filter(q=>effectiveTopic(q)===topic);
         return {topic,tqs,s:latestAnswerStats(tqs)};
       })
       .sort((a,b)=>a.s.rate-b.s.rate || b.s.total-a.s.total || a.topic.localeCompare(b.topic,'ja'))
@@ -826,12 +836,12 @@ function openTopicSelector(field){
 
   const qs=Q.filter(q=>q.field===field);
   const counts=new Map();
-  qs.forEach(q=>counts.set(q.topic,(counts.get(q.topic)||0)+1));
+  qs.forEach(q=>counts.set(effectiveTopic(q),(counts.get(effectiveTopic(q))||0)+1));
 
   const topicEntries=[...counts.entries()].map(([topic,count])=>({topic,count}));
   const normalTopics=topicEntries
     .filter(x=>x.count>=3)
-    .sort((a,b)=>b.count-a.count || a.topic.localeCompare(b.topic,'ja'));
+    .sort((a,b)=>{const p=t=>t==='回路1'?0:t==='回路2'?1:2;return p(a.topic)-p(b.topic) || b.count-a.count || a.topic.localeCompare(b.topic,'ja')});
   const rareTopics=topicEntries
     .filter(x=>x.count<=2)
     .sort((a,b)=>b.count-a.count || a.topic.localeCompare(b.topic,'ja'));
@@ -851,7 +861,7 @@ function openTopicSelector(field){
     b.dataset.other=isOther?'1':'0';
     b.setAttribute('aria-pressed','false');
     const detail=isOther ? `${count}問 / ${topics.length}論点` : `${count}問`;
-    const topicQs=qs.filter(q=>topics.includes(q.topic));
+    const topicQs=qs.filter(q=>topics.includes(effectiveTopic(q)));
     const stat=latestAnswerStats(topicQs);
     const hasWrittenCalc=topicQs.some(q=>q.calcLevel==='written');
     b.innerHTML=`<b></b><span>${detail}</span><span class="latest-rate">最新正答率：—</span>${hasWrittenCalc?'<em class="calc-mark" title="暗算以上の計算問題を含む">計</em>':''}<i class="topic-check">✓</i>`;
@@ -896,7 +906,7 @@ function renderTopicSelection(){
   });
 
   const ids=selectedField
-    ? Q.filter(q=>q.field===selectedField && selectedTopics.has(q.topic)).map(q=>q.id)
+    ? Q.filter(q=>q.field===selectedField && selectedTopics.has(effectiveTopic(q))).map(q=>q.id)
     : [];
   const startBtn=document.getElementById('topicStart');
   startBtn.disabled=ids.length===0;
@@ -907,7 +917,7 @@ function renderTopicSelection(){
 
 function selectAllTopics(){
   if(!selectedField) return;
-  selectedTopics=new Set(Q.filter(q=>q.field===selectedField).map(q=>q.topic));
+  selectedTopics=new Set(Q.filter(q=>q.field===selectedField).map(q=>effectiveTopic(q)));
   renderTopicSelection();
 }
 
@@ -918,7 +928,7 @@ function clearTopics(){
 
 function startSelectedTopics(){
   if(!selectedField || !selectedTopics.size) return;
-  const ids=Q.filter(q=>q.field===selectedField && selectedTopics.has(q.topic)).map(q=>q.id);
+  const ids=Q.filter(q=>q.field===selectedField && selectedTopics.has(effectiveTopic(q))).map(q=>q.id);
   const topicList=[...selectedTopics];
   const label=topicList.length===1
     ? `分野別：${selectedField} / ${topicList[0]}`
@@ -933,7 +943,7 @@ function start(ids,label){
   sessionTitle.textContent=label;view('quiz');renderQ();
 }
 function cur(){return byId(attempt.ids[idx])}
-function renderQ(){let q=cur(),r=attempt.answers[q.id]||{};updateRenderDebug(q);sessionProgress.textContent=`${idx+1}/${attempt.ids.length}　回答済み ${Object.values(attempt.answers).filter(x=>x.choice!=null).length}`;qtitle.textContent=`問${q.number}　${q.topic}`;qmeta.textContent=`${q.exam} / ${q.field} / ${q.solveMode==='calculation'?'計算':'文章・知識'}`;qid.textContent=q.id;document.getElementById('qstem').textContent=sourceCheckedStem(q);document.getElementById('qimage').src=q.image;document.getElementById('sourceDetails').open=!!q.showFigure;answers.innerHTML='';for(let n=1;n<=q.choices;n++){let b=document.createElement('button');b.className='ans';let ct=(q.choiceTexts&&q.choiceTexts[n-1])||`選択肢 ${n}（原文画像を参照）`;b.innerHTML=`<span class="ans-num">${n}</span><span class="ans-text"></span>`;b.querySelector('.ans-text').textContent=ct;if(r.choice!=null){if(n===q.answer)b.classList.add('correct');if(n===r.choice&&r.choice!==q.answer)b.classList.add('wrong')}b.onclick=()=>answer(n);answers.appendChild(b)}if(r.choice==null){feedback.className='feedback';feedback.innerHTML='選択肢をタップして解答してください。';explanation.classList.remove('show')}else{feedback.className='feedback '+(r.correct?'g':'b');feedback.innerHTML=`<b>${r.correct?'正解':'不正解'}：正答 ${q.answer}</b>`;explanation.innerHTML=formatExplanation(q);explanation.classList.add('show')}renderAssess(r.assessment);renderList();saveSession()}
+function renderQ(){let q=cur(),r=attempt.answers[q.id]||{};updateRenderDebug(q);sessionProgress.textContent=`${idx+1}/${attempt.ids.length}　回答済み ${Object.values(attempt.answers).filter(x=>x.choice!=null).length}`;qtitle.textContent=`問${q.number}　${effectiveTopic(q)}`;qmeta.textContent=`${q.exam} / ${q.field} / ${q.solveMode==='calculation'?'計算':'文章・知識'}`;qid.textContent=q.id;document.getElementById('qstem').textContent=sourceCheckedStem(q);document.getElementById('qimage').src=q.image;document.getElementById('sourceDetails').open=!!q.showFigure;answers.innerHTML='';for(let n=1;n<=q.choices;n++){let b=document.createElement('button');b.className='ans';let ct=(q.choiceTexts&&q.choiceTexts[n-1])||`選択肢 ${n}（原文画像を参照）`;b.innerHTML=`<span class="ans-num">${n}</span><span class="ans-text"></span>`;b.querySelector('.ans-text').textContent=ct;if(r.choice!=null){if(n===q.answer)b.classList.add('correct');if(n===r.choice&&r.choice!==q.answer)b.classList.add('wrong')}b.onclick=()=>answer(n);answers.appendChild(b)}if(r.choice==null){feedback.className='feedback';feedback.innerHTML='選択肢をタップして解答してください。';explanation.classList.remove('show')}else{feedback.className='feedback '+(r.correct?'g':'b');feedback.innerHTML=`<b>${r.correct?'正解':'不正解'}：正答 ${q.answer}</b>`;explanation.innerHTML=formatExplanation(q);explanation.classList.add('show')}renderAssess(r.assessment);renderList();saveSession()}
 function answer(n){
   if(sessionStatus==='completed')return;
   let q=cur();if(!Number.isInteger(n)||n<1||n>q.choices)return;
@@ -950,7 +960,7 @@ noConf.onclick=()=>{noOpts.classList.add('show');yesOpts.classList.remove('show'
   renderAssess(b.dataset.assess);
   saveSession();
 });
-function renderList(){qlist.innerHTML='';attempt.ids.forEach((id,i)=>{let q=byId(id),r=attempt.answers[id],b=document.createElement('button');b.className='jump '+(i===idx?'cur':'');b.innerHTML=`<span><span class="dot ${r&&r.choice!=null?(r.correct?'g':'b'):''}"></span>${q.id}</span><small>${q.topic}</small>`;b.onclick=()=>{idx=i;renderQ()};qlist.appendChild(b)})}
+function renderList(){qlist.innerHTML='';attempt.ids.forEach((id,i)=>{let q=byId(id),r=attempt.answers[id],b=document.createElement('button');b.className='jump '+(i===idx?'cur':'');b.innerHTML=`<span><span class="dot ${r&&r.choice!=null?(r.correct?'g':'b'):''}"></span>${q.id}</span><small>${effectiveTopic(q)}</small>`;b.onclick=()=>{idx=i;renderQ()};qlist.appendChild(b)})}
 prev.onclick=()=>{if(idx>0){idx--;renderQ()}};next.onclick=()=>{if(idx===attempt.ids.length-1){finish()}else{idx++;renderQ()}};finishEarly.onclick=finish;
 function finish(){
   if(!attempt)return;
@@ -979,7 +989,7 @@ function finish(){
   renderResult(correct,ass,answered);view('result');
 }
 function renderResult(correct,ass,answered=Object.values(attempt.answers).filter(x=>x.choice!=null).length){resultCorrect.textContent=`${correct}/${answered}`;resultRate.textContent=(answered?Math.round(correct/answered*100):0)+'%';resultAssess.textContent=`${ass}/${answered}`;resultMeta.textContent=`${attempt.label}｜回答 ${answered}/${attempt.ids.length}`;resultRows.innerHTML='';let fields=['通信方式・基礎','電気・電子回路','送受信・通信設備','レーダー','アンテナ・電波伝搬','電源・測定'];let groups=fields.map(f=>({f,qs:attempt.ids.map(byId).filter(q=>q.field===f)})),max=Math.max(...groups.map(g=>g.qs.length),1);groups.forEach(g=>{let row=document.createElement('div');row.className='result-row';row.innerHTML=`<b>${g.f}</b><div class="marks"></div>`;let mr=row.querySelector('.marks');g.qs.forEach(q=>{let r=attempt.answers[q.id],b=document.createElement('button');b.className='mark '+(r&&r.choice!=null?(r.correct?'g':'b'):'');b.innerHTML=`${r&&r.choice!=null?(r.correct?'○':'×'):'－'}<small>${q.id}</small>`;b.onclick=()=>{idx=attempt.ids.indexOf(q.id);view('quiz');renderQ()};mr.appendChild(b)});for(let i=g.qs.length;i<max;i++){let s=document.createElement('span');s.className='blank';mr.appendChild(s)}resultRows.appendChild(row)});exportText.value=buildExport(correct,answered)}
-function buildExport(correct,answered=Object.values(attempt.answers).filter(x=>x.choice!=null).length){let rows=['一陸特 無線工学 演習結果',`範囲: ${attempt.label}`,`回答: ${answered}/${attempt.ids.length}`,`結果: ${correct}/${answered} (${answered?Math.round(correct/answered*100):0}%)`,'','形式: [ID] ○× | 回答 | 正答 | 自信度 | 分野 | 論点'];attempt.ids.forEach(id=>{let q=byId(id),r=attempt.answers[id]||{},mark=r.choice==null?'未':(r.correct?'○':'×');rows.push(`[${id}] ${mark} | 回答:${r.choice??'-'} | 正答:${q.answer} | 自信度:${AS[r.assessment]||'未入力'} | ${q.field} | ${q.topic}`)});return rows.join('\n')}
+function buildExport(correct,answered=Object.values(attempt.answers).filter(x=>x.choice!=null).length){let rows=['一陸特 無線工学 演習結果',`範囲: ${attempt.label}`,`回答: ${answered}/${attempt.ids.length}`,`結果: ${correct}/${answered} (${answered?Math.round(correct/answered*100):0}%)`,'','形式: [ID] ○× | 回答 | 正答 | 自信度 | 分野 | 論点'];attempt.ids.forEach(id=>{let q=byId(id),r=attempt.answers[id]||{},mark=r.choice==null?'未':(r.correct?'○':'×');rows.push(`[${id}] ${mark} | 回答:${r.choice??'-'} | 正答:${q.answer} | 自信度:${AS[r.assessment]||'未入力'} | ${q.field} | ${effectiveTopic(q)}`)});return rows.join('\n')}
 copyExport.onclick=async()=>{try{await navigator.clipboard.writeText(exportText.value)}catch(e){exportText.select();document.execCommand('copy')}};downloadExport.onclick=()=>{let b=new Blob([exportText.value],{type:'text/plain;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='ichirikutoku_result.txt';a.click();URL.revokeObjectURL(a.href)};document.getElementById('backHome').addEventListener('click',home);document.getElementById('homeTop').addEventListener('click',home);
 document.querySelectorAll('[data-exam]').forEach(b=>b.onclick=()=>{let c=b.dataset.exam;start(Q.filter(q=>q.examCode===c).map(q=>q.id),b.querySelector('b').textContent)});document.querySelectorAll('[data-field]').forEach(b=>b.onclick=()=>openTopicSelector(b.dataset.field));document.getElementById('topicAll').onclick=selectAllTopics;document.getElementById('topicClear').onclick=clearTopics;document.getElementById('topicStart').onclick=startSelectedTopics;
 wrongAction.onclick=()=>start(Q.filter(q=>(db.mastery[q.id]?.wrong||0)>0).map(q=>q.id),'弱点復習：誤答経験あり');weakAction.onclick=()=>start(Q.filter(q=>['unknown','understanding','recall','guess','low'].includes(db.mastery[q.id]?.lastAssessment)).map(q=>q.id),'弱点復習：自信が弱い');unseenAction.onclick=()=>start(Q.filter(q=>!(db.mastery[q.id]?.attempts>0)).map(q=>q.id),'未回答問題');function shuffled(items){let a=[...items];for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}randomAction.onclick=()=>{let a=shuffled(Q).slice(0,20);start(a.map(q=>q.id),'ランダム20問')};
@@ -1089,7 +1099,7 @@ function updateRenderDebug(q){
   let pol='';
   if(stem.includes('誤っているものを')) pol=' / 誤';
   else if(stem.includes('正しいものを')) pol=' / 正';
-  v.textContent='v24 • build 20260922-circuit-split'+' / '+q.id+pol;
+  v.textContent='v25 • build 20260922-circuit-latest-split'+' / '+q.id+pol;
 }
 
 
@@ -1145,7 +1155,7 @@ function explanationHighlightTerms(q,bgText){
     if(!t || t.length<2 || EX_STOPWORDS.has(t) || !bgText.includes(t) || terms.includes(t)) return;
     terms.push(t);
   };
-  technicalTokens((q.topic||'').replace(/[・／/]/g,' ')).forEach(add);
+  technicalTokens((effectiveTopic(q)||'').replace(/[・／/]/g,' ')).forEach(add);
   const correct=(q.choiceTexts&&q.choiceTexts[q.answer-1])||'';
   technicalTokens(correct).sort((a,b)=>b.length-a.length).forEach(add);
   return terms.sort((a,b)=>b.length-a.length).slice(0,8);
