@@ -1,0 +1,196 @@
+{
+  "format": 1,
+  "source": "index.html",
+  "questionCount": 75,
+  "chunks": [
+    {
+      "path": "question-data/questions-01.js",
+      "ids": [
+        "R0510A-03",
+        "R0510A-04",
+        "R0510A-05"
+      ],
+      "approxChars": 112636
+    },
+    {
+      "path": "question-data/questions-02.js",
+      "ids": [
+        "R0510A-06",
+        "R0510A-07",
+        "R0510A-10"
+      ],
+      "approxChars": 146468
+    },
+    {
+      "path": "question-data/questions-03.js",
+      "ids": [
+        "R0510B-03",
+        "R0510B-04",
+        "R0510B-05"
+      ],
+      "approxChars": 115702
+    },
+    {
+      "path": "question-data/questions-04.js",
+      "ids": [
+        "R0510B-06",
+        "R0510B-07",
+        "R0510B-10"
+      ],
+      "approxChars": 145829
+    },
+    {
+      "path": "question-data/questions-05.js",
+      "ids": [
+        "R0510B-11",
+        "R0602A-03",
+        "R0602A-04",
+        "R0602A-06",
+        "R0602A-21"
+      ],
+      "approxChars": 148777
+    },
+    {
+      "path": "question-data/questions-06.js",
+      "ids": [
+        "R0602B-03",
+        "R0602B-04",
+        "R0602B-06",
+        "R0602B-18",
+        "R0602B-21",
+        "R0606A-04"
+      ],
+      "approxChars": 165709
+    },
+    {
+      "path": "question-data/questions-07.js",
+      "ids": [
+        "R0606A-08",
+        "R0606B-04",
+        "R0610A-03",
+        "R0610A-04",
+        "R0610A-17"
+      ],
+      "approxChars": 163493
+    },
+    {
+      "path": "question-data/questions-08.js",
+      "ids": [
+        "R0610B-03",
+        "R0610B-04",
+        "R0610B-17",
+        "R0702A-03"
+      ],
+      "approxChars": 120361
+    },
+    {
+      "path": "question-data/questions-09.js",
+      "ids": [
+        "R0702A-04",
+        "R0702A-06",
+        "R0702A-10"
+      ],
+      "approxChars": 148521
+    },
+    {
+      "path": "question-data/questions-10.js",
+      "ids": [
+        "R0702A-11",
+        "R0702A-17",
+        "R0702A-21",
+        "R0702B-03",
+        "R0702B-04"
+      ],
+      "approxChars": 160599
+    },
+    {
+      "path": "question-data/questions-11.js",
+      "ids": [
+        "R0702B-06",
+        "R0702B-17",
+        "R0702B-21",
+        "R0706A-03",
+        "R0706A-04"
+      ],
+      "approxChars": 163671
+    },
+    {
+      "path": "question-data/questions-12.js",
+      "ids": [
+        "R0706A-05",
+        "R0706A-07",
+        "R0706B-03",
+        "R0706B-04"
+      ],
+      "approxChars": 142192
+    },
+    {
+      "path": "question-data/questions-13.js",
+      "ids": [
+        "R0706B-05",
+        "R0706B-07",
+        "R0710A-03",
+        "R0710A-04",
+        "R0710A-18"
+      ],
+      "approxChars": 162574
+    },
+    {
+      "path": "question-data/questions-14.js",
+      "ids": [
+        "R0710A-21",
+        "R0710A-23",
+        "R0710B-03",
+        "R0710B-04"
+      ],
+      "approxChars": 137283
+    },
+    {
+      "path": "question-data/questions-15.js",
+      "ids": [
+        "R0710B-18",
+        "R0710B-23",
+        "R0802A-03",
+        "R0802A-04"
+      ],
+      "approxChars": 142607
+    },
+    {
+      "path": "question-data/questions-16.js",
+      "ids": [
+        "R0802A-20",
+        "R0802B-03",
+        "R0802B-04"
+      ],
+      "approxChars": 122519
+    },
+    {
+      "path": "question-data/questions-17.js",
+      "ids": [
+        "R0802B-20",
+        "R0806A-03",
+        "R0806A-04"
+      ],
+      "approxChars": 123852
+    },
+    {
+      "path": "question-data/questions-18.js",
+      "ids": [
+        "R0806A-05",
+        "R0806A-12",
+        "R0806A-19",
+        "R0806B-03",
+        "R0806B-04"
+      ],
+      "approxChars": 162270
+    },
+    {
+      "path": "question-data/questions-19.js",
+      "ids": [
+        "R0806B-05",
+        "R0806B-19"
+      ],
+      "approxChars": 66895
+    }
+  ]
+}
