@@ -53,6 +53,31 @@ jobs:
           print("Unified package validation OK")
           PY
 
+      - name: Prepare corrected package
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/unified-fix /tmp/ichirikutoku.upload.zip
+          mkdir -p /tmp/unified-fix
+          unzip -q ichirikutoku_oci_unified_no198.zip -d /tmp/unified-fix
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("/tmp/unified-fix/ichirikutoku_unified/home/index.html")
+          s=p.read_text(encoding="utf-8")
+          replacements={
+              'href="houki-textbook/index.html"':'href="/houki-textbook/"',
+              'href="houki-practice/index.html"':'href="/houki-practice/"',
+              'href="kogaku-v1/index.html"':'href="/kogaku-v1/"',
+              'href="kogaku-v2/index.html"':'href="/"',
+          }
+          for old,new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f"Expected link missing: {old}")
+              s=s.replace(old,new)
+          p.write_text(s,encoding="utf-8")
+          PY
+          (cd /tmp/unified-fix && zip -qr /tmp/ichirikutoku.upload.zip ichirikutoku_unified)
+
       - name: Configure SSH
         shell: bash
         env:
@@ -72,7 +97,7 @@ jobs:
           OCI_USER: ${{ secrets.OCI_USER }}
         run: |
           scp -i ~/.ssh/id_ed25519 \
-            ichirikutoku_oci_unified_no198.zip \
+            /tmp/ichirikutoku.upload.zip \
             "${OCI_USER}@${OCI_HOST}:/home/deployquiz/ichirikutoku.upload.zip"
 
       - name: Deploy package
@@ -98,6 +123,10 @@ jobs:
             test -s /var/www/ichirikutoku/houki-practice/index.html
             test -s /var/www/ichirikutoku/kogaku-v1/index.html
             test -s /var/www/ichirikutoku/index.html
+            grep -q 'href="/houki-textbook/"' /var/www/ichirikutoku/home/index.html
+            grep -q 'href="/houki-practice/"' /var/www/ichirikutoku/home/index.html
+            grep -q 'href="/kogaku-v1/"' /var/www/ichirikutoku/home/index.html
+            grep -q 'href="/"' /var/www/ichirikutoku/home/index.html
             echo "Unified deployment verified"
           '
 
