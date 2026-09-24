@@ -139,6 +139,6 @@ jobs:
               "https://${OCI_HOST}/${path}"
           done
           echo "Checking distinct study pages"
-          curl --fail --silent "https://${OCI_HOST}/houki-textbook/index.html" | grep -q "一陸特法規"
-          curl --fail --silent "https://${OCI_HOST}/houki-practice/index.html" | grep -q "一陸特法規"
-          curl --fail --silent "https://${OCI_HOST}/kogaku-v1/index.html" | grep -q "432"
+          curl --fail --silent "https://${OCI_HOST}/houki-textbook/index.html" | grep -q "一陸特 法規 混同論点の対比"
+          curl --fail --silent "https://${OCI_HOST}/houki-practice/index.html" | grep -q "一陸特 法規 演習 スマホ版"
+          curl --fail --silent "https://${OCI_HOST}/kogaku-v1/index.html" | grep -q "一陸特 無線工学 問題集"
