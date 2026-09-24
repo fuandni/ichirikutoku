@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "ichirikutoku_oci_unified_no198.zip"
+      - "ichirikutoku_oci_unified_no198.zip"\n      - ".github/workflows/deploy-unified.yml"
       - ".github/workflows/deploy-unified.yml"
   workflow_dispatch:
 
