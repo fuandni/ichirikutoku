@@ -95,8 +95,8 @@ jobs:
    let correct=Number(obj.correct??obj.correctCount??obj.right);
    let total=Number(obj.total??obj.totalCount??obj.count);
    let score=Number(obj.score);
-   if(Number.isFinite(correct)&&Number.isFinite(total)&&total>0) return `${correct}/${total}（${Math.round(correct/total*100)}%）`;
-   if(Number.isFinite(score)) return score<=1?`${Math.round(score*100)}%`:`${Math.round(score)}点`;
+   if(Number.isFinite(correct)&&Number.isFinite(total)&&total>0) return correct+'/'+total+'（'+Math.round(correct/total*100)+'%）';
+   if(Number.isFinite(score)) return score<=1?Math.round(score*100)+'%':Math.round(score)+'点';
    return "";
  };
  const records=()=>{
