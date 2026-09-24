@@ -123,8 +123,6 @@ jobs:
             test -s /var/www/ichirikutoku/houki-practice/index.html
             test -s /var/www/ichirikutoku/kogaku-v1/index.html
             test -s /var/www/ichirikutoku/index.html
-            echo "Home links:"
-            grep -oE 'href="[^"]+"' /var/www/ichirikutoku/home/index.html
             echo "Unified deployment files verified"
           '
 
