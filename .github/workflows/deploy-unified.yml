@@ -36,7 +36,10 @@ jobs:
           z="ichirikutoku_oci_unified_no198.zip"
           required={"home/index.html","houki-textbook/index.html","houki-practice/index.html","kogaku-v1/index.html"}
           with zipfile.ZipFile(z) as f:
-              names={n.replace("\\","/").lstrip("./") for n in f.namelist()}
+              raw_names={n.replace("\\","/") for n in f.namelist()}
+              prefix="ichirikutoku_unified/"
+              names={n[len(prefix):] if n.startswith(prefix) else n for n in raw_names}
+              names={n.lstrip("./") for n in names}
               unsafe=[]
               for n in names:
                   p=PurePosixPath(n)
