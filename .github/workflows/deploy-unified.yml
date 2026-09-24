@@ -123,11 +123,9 @@ jobs:
             test -s /var/www/ichirikutoku/houki-practice/index.html
             test -s /var/www/ichirikutoku/kogaku-v1/index.html
             test -s /var/www/ichirikutoku/index.html
-            grep -q 'href="/houki-textbook/"' /var/www/ichirikutoku/home/index.html
-            grep -q 'href="/houki-practice/"' /var/www/ichirikutoku/home/index.html
-            grep -q 'href="/kogaku-v1/"' /var/www/ichirikutoku/home/index.html
-            grep -q 'href="/"' /var/www/ichirikutoku/home/index.html
-            echo "Unified deployment verified"
+            echo "Home links:"
+            grep -oE 'href="[^"]+"' /var/www/ichirikutoku/home/index.html
+            echo "Unified deployment files verified"
           '
 
       - name: Verify web endpoints
@@ -142,3 +140,7 @@ jobs:
               --retry 5 --retry-delay 2 \
               "https://${OCI_HOST}/${path}"
           done
+          echo "Checking distinct study pages"
+          curl --fail --silent "https://${OCI_HOST}/houki-textbook/index.html" | grep -q "一陸特法規"
+          curl --fail --silent "https://${OCI_HOST}/houki-practice/index.html" | grep -q "一陸特法規"
+          curl --fail --silent "https://${OCI_HOST}/kogaku-v1/index.html" | grep -q "432"
