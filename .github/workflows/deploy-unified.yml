@@ -76,6 +76,40 @@ jobs:
               s=s.replace(old,new)
           p.write_text(s,encoding="utf-8")
 
+          q=Path("/tmp/unified-fix/ichirikutoku_unified/kogaku-v1/index.html")
+          t=q.read_text(encoding="utf-8")
+          t=t.replace("</head>", """<style>
+.exam-card.exam-completed{border:2px solid #2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.10) inset!important}
+.exam-card .exam-result{display:block;margin-top:6px;padding:3px 7px;border-radius:7px;background:rgba(37,99,235,.10);font-size:12px;font-weight:800;line-height:1.35}
+</style></head>""", 1)
+          old_loop="""  document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
+    const qs=Q.filter(q=>q.examCode===card.dataset.exam);
+    card.style.display=qs.length?'':'none';
+    const count=card.querySelector('span');
+    if(count)count.textContent=`${qs.length}問`;
+  });"""
+          new_loop="""  document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
+    const qs=Q.filter(q=>q.examCode===card.dataset.exam);
+    card.style.display=qs.length?'':'none';
+    const count=card.querySelector('span:not(.exam-result)');
+    if(count)count.textContent=`${qs.length}問`;
+    const label=card.querySelector('b')?.textContent||'';
+    const last=[...db.attempts].reverse().find(x=>x.label===label);
+    card.classList.toggle('exam-completed',!!last);
+    let result=card.querySelector('.exam-result');
+    if(last){
+      if(!result){result=document.createElement('span');result.className='exam-result';card.appendChild(result)}
+      result.textContent=`受験済み ${last.correct}/${last.total}（${last.rate}%）`;
+    }else if(result){result.remove()}
+  });"""
+          if old_loop not in t:
+              raise SystemExit("v1 exam loop not found")
+          t=t.replace(old_loop,new_loop,1)
+          old_top="document.getElementById('homeTop').addEventListener('click',home);"
+          if old_top not in t:
+              raise SystemExit("v1 homeTop handler not found")
+          t=t.replace(old_top,"document.getElementById('homeTop').addEventListener('click',()=>{location.href='/home/'});",1)
+          q.write_text(t,encoding="utf-8")
           PY
           (cd /tmp/unified-fix && zip -qr /tmp/ichirikutoku.upload.zip ichirikutoku_unified)
 
