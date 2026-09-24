@@ -101,10 +101,15 @@ jobs:
             echo "Unified deployment verified"
           '
 
-      - name: Verify web service
+      - name: Verify web endpoints
         shell: bash
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
         run: |
-          curl --fail --show-error --silent --retry 5 --retry-delay 2 \
-            "https://${OCI_HOST}/health"
+          set -euo pipefail
+          for path in health home/ houki-textbook/ houki-practice/ kogaku-v1/; do
+            echo "Checking /${path}"
+            curl --fail --show-error --silent --output /dev/null \
+              --retry 5 --retry-delay 2 \
+              "https://${OCI_HOST}/${path}"
+          done
