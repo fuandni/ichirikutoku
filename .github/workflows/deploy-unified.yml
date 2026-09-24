@@ -75,6 +75,72 @@ jobs:
                   raise SystemExit(f"Expected link missing: {old}")
               s=s.replace(old,new)
           p.write_text(s,encoding="utf-8")
+
+          # 無線工学v1: 年・試験回カードに受験済み表示を追加する。
+          # 既存アプリの保存形式を壊さず、ブラウザ側で既存DOM/保存データを観察して表示する。
+          q=Path("/tmp/unified-fix/ichirikutoku_unified/kogaku-v1/index.html")
+          t=q.read_text(encoding="utf-8")
+          addon=r'''
+<style id="attempt-status-style">
+.attempt-done{border:2px solid #3b82f6!important;box-shadow:0 0 0 2px rgba(59,130,246,.10) inset!important}
+.attempt-score{display:block;margin-top:.35rem;padding:.2rem .45rem;border-radius:.45rem;background:rgba(59,130,246,.10);font-size:.78rem;font-weight:700;line-height:1.35}
+</style>
+<script id="attempt-status-script">
+(()=> {
+ const norm=s=>(s||"").replace(/\\s+/g,"");
+ const scoreText=(obj)=>{
+   if(!obj||typeof obj!=="object") return "";
+   const vals=[obj.score,obj.correct,obj.correctCount,obj.right,obj.total,obj.totalCount,obj.count];
+   const nums=vals.filter(v=>Number.isFinite(Number(v))).map(Number);
+   let correct=Number(obj.correct??obj.correctCount??obj.right);
+   let total=Number(obj.total??obj.totalCount??obj.count);
+   let score=Number(obj.score);
+   if(Number.isFinite(correct)&&Number.isFinite(total)&&total>0) return `${correct}/${total}（${Math.round(correct/total*100)}%）`;
+   if(Number.isFinite(score)) return score<=1?`${Math.round(score*100)}%`:`${Math.round(score)}点`;
+   return "";
+ };
+ const records=()=>{
+   const out=[];
+   for(let i=0;i<localStorage.length;i++){
+     const k=localStorage.key(i), raw=localStorage.getItem(k);
+     try{
+       const v=JSON.parse(raw);
+       const walk=(x,path=k)=>{
+         if(!x||typeof x!=="object") return;
+         if(Array.isArray(x)){x.forEach((y,j)=>walk(y,path+"."+j));return;}
+         const st=scoreText(x);
+         if(st) out.push({key:norm(path+" "+JSON.stringify(x)),score:st});
+         Object.entries(x).forEach(([a,b])=>{if(typeof b==="object")walk(b,path+"."+a)});
+       }; walk(v);
+     }catch{}
+   }
+   return out;
+ };
+ const paint=()=>{
+   const rec=records();
+   document.querySelectorAll("button,a,.card,.exam-card,[role=button]").forEach(el=>{
+     if(el.closest("#attempt-status-script")) return;
+     const txt=norm(el.textContent);
+     if(!txt||txt.length>80) return;
+     const year=(txt.match(/(20\\d{2}|令和\\d+|平成\\d+)/)||[])[0];
+     const round=(txt.match(/(?:第)?([1-9])回/)||[])[0];
+     if(!year||!round) return;
+     const hit=rec.find(r=>r.key.includes(norm(year))&&r.key.includes(norm(round)));
+     if(!hit) return;
+     el.classList.add("attempt-done");
+     if(!el.querySelector(".attempt-score")){
+       const b=document.createElement("span"); b.className="attempt-score"; b.textContent="受験済み "+hit.score; el.appendChild(b);
+     }
+   });
+ };
+ addEventListener("load",()=>{paint();new MutationObserver(paint).observe(document.body,{childList:true,subtree:true})});
+})();
+</script>
+'''
+          if "</body>" not in t:
+              raise SystemExit("kogaku-v1 closing body not found")
+          t=t.replace("</body>",addon+"</body>",1)
+          q.write_text(t,encoding="utf-8")
           PY
           (cd /tmp/unified-fix && zip -qr /tmp/ichirikutoku.upload.zip ichirikutoku_unified)
 
