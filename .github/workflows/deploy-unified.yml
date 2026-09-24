@@ -1,0 +1,107 @@
+name: Deploy unified study site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ichirikutoku_oci_unified_no198.zip"
+      - ".github/workflows/deploy-unified.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ichirikutoku-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="ichirikutoku_oci_unified_no198.zip"
+          test -s "$ZIP"
+          unzip -t "$ZIP"
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import PurePosixPath
+          z="ichirikutoku_oci_unified_no198.zip"
+          required={"home/index.html","houki-textbook/index.html","houki-practice/index.html","kogaku-v1/index.html"}
+          with zipfile.ZipFile(z) as f:
+              names={n.replace("\\","/").lstrip("./") for n in f.namelist()}
+              unsafe=[]
+              for n in names:
+                  p=PurePosixPath(n)
+                  if p.is_absolute() or ".." in p.parts:
+                      unsafe.append(n)
+              if unsafe:
+                  raise SystemExit("Unsafe ZIP paths: "+", ".join(unsafe[:10]))
+              missing=required-names
+              if missing:
+                  raise SystemExit("Missing required entries: "+", ".join(sorted(missing)))
+          print("Unified package validation OK")
+          PY
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload package
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          scp -i ~/.ssh/id_ed25519 \
+            ichirikutoku_oci_unified_no198.zip \
+            "${OCI_USER}@${OCI_HOST}:/home/deployquiz/ichirikutoku.upload.zip"
+
+      - name: Deploy package
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            "${OCI_USER}@${OCI_HOST}" \
+            'sudo /usr/local/sbin/deploy-ichirikutoku'
+
+      - name: Verify deployed files
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" '
+            set -e
+            test -s /var/www/ichirikutoku/home/index.html
+            test -s /var/www/ichirikutoku/houki-textbook/index.html
+            test -s /var/www/ichirikutoku/houki-practice/index.html
+            test -s /var/www/ichirikutoku/kogaku-v1/index.html
+            test -s /var/www/ichirikutoku/index.html
+            echo "Unified deployment verified"
+          '
+
+      - name: Verify web service
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          curl --fail --show-error --silent --retry 5 --retry-delay 2 \
+            "https://${OCI_HOST}/health"
