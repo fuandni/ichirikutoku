@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "ichirikutoku_oci_unified_no198.zip"
+      - "ichirikutoku_oci_unified_no198_patched.zip"
       - ".github/workflows/deploy-unified.yml"
   workflow_dispatch:
 
@@ -27,13 +27,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="ichirikutoku_oci_unified_no198.zip"
+          ZIP="ichirikutoku_oci_unified_no198_patched.zip"
           test -s "$ZIP"
           unzip -t "$ZIP"
           python3 - <<'PY'
           import zipfile
           from pathlib import PurePosixPath
-          z="ichirikutoku_oci_unified_no198.zip"
+          z="ichirikutoku_oci_unified_no198_patched.zip"
           required={"home/index.html","houki-textbook/index.html","houki-practice/index.html","kogaku-v1/index.html"}
           with zipfile.ZipFile(z) as f:
               raw_names={n.replace("\\","/") for n in f.namelist()}
@@ -59,7 +59,7 @@ jobs:
           set -euo pipefail
           rm -rf /tmp/unified-fix /tmp/ichirikutoku.upload.zip
           mkdir -p /tmp/unified-fix
-          unzip -q ichirikutoku_oci_unified_no198.zip -d /tmp/unified-fix
+          unzip -q ichirikutoku_oci_unified_no198_patched.zip -d /tmp/unified-fix
           python3 - <<'PY'
           from pathlib import Path
           p=Path("/tmp/unified-fix/ichirikutoku_unified/home/index.html")
@@ -76,20 +76,6 @@ jobs:
               s=s.replace(old,new)
           p.write_text(s,encoding="utf-8")
 
-          q=Path("/tmp/unified-fix/ichirikutoku_unified/kogaku-v1/index.html")
-          t=q.read_text(encoding="utf-8")
-          css="<style>\\n.exam-card.exam-completed{border:2px solid #2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.10) inset!important}\\n.exam-card .exam-result{display:block;margin-top:6px;padding:3px 7px;border-radius:7px;background:rgba(37,99,235,.10);font-size:12px;font-weight:800;line-height:1.35}\\n</style>"
-          t=t.replace("</head>",css+"</head>",1)
-          old_loop="  document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{\\n    const qs=Q.filter(q=>q.examCode===card.dataset.exam);\\n    card.style.display=qs.length?'':'none';\\n    const count=card.querySelector('span');\\n    if(count)count.textContent=\\`${qs.length}問\\`;\\n  });"
-          new_loop="  document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{\\n    const qs=Q.filter(q=>q.examCode===card.dataset.exam);\\n    card.style.display=qs.length?'':'none';\\n    const count=card.querySelector('span:not(.exam-result)');\\n    if(count)count.textContent=\\`${qs.length}問\\`;\\n    const label=card.querySelector('b')?.textContent||'';\\n    const last=[...db.attempts].reverse().find(x=>x.label===label);\\n    card.classList.toggle('exam-completed',!!last);\\n    let result=card.querySelector('.exam-result');\\n    if(last){\\n      if(!result){result=document.createElement('span');result.className='exam-result';card.appendChild(result)}\\n      result.textContent=\\`受験済み ${last.correct}/${last.total}（${last.rate}%）\\`;\\n    }else if(result){result.remove()}\\n  });"
-          if old_loop not in t:
-              raise SystemExit("v1 exam loop not found")
-          t=t.replace(old_loop,new_loop,1)
-          old_top="document.getElementById('homeTop').addEventListener('click',home);"
-          if old_top not in t:
-              raise SystemExit("v1 homeTop handler not found")
-          t=t.replace(old_top,"document.getElementById('homeTop').addEventListener('click',()=>{location.href='/home/'});",1)
-          q.write_text(t,encoding="utf-8")
           PY
           (cd /tmp/unified-fix && zip -qr /tmp/ichirikutoku.upload.zip ichirikutoku_unified)
 
