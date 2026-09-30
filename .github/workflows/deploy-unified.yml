@@ -97,38 +97,8 @@ jobs:
               raise SystemExit("v1 head close tag not found")
           t=t.replace("</head>",extra_style+"</head>",1)
 
-          import re
-          new_loop=textwrap.dedent("""\
-                document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
-                  const qs=Q.filter(q=>q.examCode===card.dataset.exam);
-                  card.style.display=qs.length?'':'none';
-                  const count=card.querySelector('span:not(.exam-result)');
-                  if(count)count.textContent=`${qs.length}問`;
-                  let answered=0,correct=0;
-                  qs.forEach(q=>{
-                    const m=db.mastery&&db.mastery[q.id];
-                    if(m&&m.lastChoice!=null){
-                      answered++;
-                      if(Number(m.lastChoice)===Number(q.answer))correct++;
-                    }
-                  });
-                  card.classList.toggle('exam-completed',answered===qs.length&&qs.length>0);
-                  let result=card.querySelector('.exam-result');
-                  if(answered){
-                    if(!result){result=document.createElement('span');result.className='exam-result';card.appendChild(result)}
-                    const rate=qs.length?Math.round(correct/qs.length*100):0;
-                    result.textContent=answered===qs.length
-                      ? `完了 ${correct}/${qs.length}（${rate}%）`
-                      : `進捗 ${answered}/${qs.length}問・正解 ${correct}`;
-                  }else if(result){result.remove()}
-                });""")
-          exam_loop_re=re.compile(
-              r"  document\.querySelectorAll\('\.exam-card\[data-exam\]'\)\.forEach\(card=>\{.*?^  \}\);",
-              re.M|re.S
-          )
-          t,n=exam_loop_re.subn(new_loop,t,count=1)
-          if n!=1:
-              raise SystemExit("v1 exam loop not found")
+          # Year/session cards are updated by the injected runtime wrapper below.
+          # This avoids depending on the exact minified/source layout of v1.
 
           old_top="document.getElementById('homeTop').addEventListener('click',home);"
           if old_top in t:
@@ -269,6 +239,44 @@ jobs:
                       }
                     };
 
+                    function renderPersistentExamProgress(){
+                      document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
+                        const qs=Q.filter(q=>q.examCode===card.dataset.exam);
+                        if(!qs.length)return;
+                        const count=card.querySelector('span:not(.exam-result)');
+                        if(count)count.textContent=qs.length+'問';
+                        let answered=0,correct=0;
+                        qs.forEach(q=>{
+                          const m=db.mastery&&db.mastery[q.id];
+                          if(m&&m.lastChoice!=null){
+                            answered++;
+                            if(Number(m.lastChoice)===Number(q.answer))correct++;
+                          }
+                        });
+                        card.classList.toggle('exam-completed',answered===qs.length);
+                        let result=card.querySelector('.exam-result');
+                        if(answered){
+                          if(!result){
+                            result=document.createElement('span');
+                            result.className='exam-result';
+                            card.appendChild(result);
+                          }
+                          const rate=Math.round(correct/qs.length*100);
+                          result.textContent=answered===qs.length
+                            ? '完了 '+correct+'/'+qs.length+'（'+rate+'%）'
+                            : '進捗 '+answered+'/'+qs.length+'問・正解 '+correct;
+                        }else if(result){
+                          result.remove();
+                        }
+                      });
+                    }
+                    const originalRenderHome=renderHome;
+                    renderHome=function(){
+                      originalRenderHome();
+                      renderPersistentExamProgress();
+                    };
+                    renderPersistentExamProgress();
+
                     window.addEventListener('online',()=>{status('再接続','busy');queue(100)});
                     window.addEventListener('offline',()=>status('オフライン','offline'));
                     window.addEventListener('focus',()=>queue(150));
@@ -331,6 +339,8 @@ jobs:
             test -s /var/www/ichirikutoku/houki-practice/index.html
             test -s /var/www/ichirikutoku/kogaku-v1/index.html
             test -s /var/www/ichirikutoku/index.html
+            grep -q "KOGAKU_V1_CLOUD_SYNC_V1" /var/www/ichirikutoku/kogaku-v1/index.html
+            grep -q "renderPersistentExamProgress" /var/www/ichirikutoku/kogaku-v1/index.html
             echo "Unified deployment files verified"
           '
 
