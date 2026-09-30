@@ -97,13 +97,7 @@ jobs:
               raise SystemExit("v1 head close tag not found")
           t=t.replace("</head>",extra_style+"</head>",1)
 
-          old_loop=textwrap.dedent("""\
-                document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
-                  const qs=Q.filter(q=>q.examCode===card.dataset.exam);
-                  card.style.display=qs.length?'':'none';
-                  const count=card.querySelector('span');
-                  if(count)count.textContent=`${qs.length}問`;
-                });""")
+          import re
           new_loop=textwrap.dedent("""\
                 document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
                   const qs=Q.filter(q=>q.examCode===card.dataset.exam);
@@ -128,9 +122,13 @@ jobs:
                       : `進捗 ${answered}/${qs.length}問・正解 ${correct}`;
                   }else if(result){result.remove()}
                 });""")
-          if old_loop not in t:
+          exam_loop_re=re.compile(
+              r"  document\.querySelectorAll\('\.exam-card\[data-exam\]'\)\.forEach\(card=>\{.*?^  \}\);",
+              re.M|re.S
+          )
+          t,n=exam_loop_re.subn(new_loop,t,count=1)
+          if n!=1:
               raise SystemExit("v1 exam loop not found")
-          t=t.replace(old_loop,new_loop,1)
 
           old_top="document.getElementById('homeTop').addEventListener('click',home);"
           if old_top in t:
