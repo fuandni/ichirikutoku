@@ -77,49 +77,57 @@ jobs:
           p.write_text(s,encoding="utf-8")
 
           # Patch the full 432-question radio-engineering page.
+          import textwrap
           q=Path("/tmp/unified-fix/ichirikutoku_unified/kogaku-v1/index.html")
           t=q.read_text(encoding="utf-8")
 
           # Persist year/session progress from question-level mastery rather than
           # the recent attempt history. Starting a new session must not reset
           # the exam card's progress.
-          t=t.replace("</head>", """<style>
-.exam-card.exam-completed{border:2px solid #2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.10) inset!important}
-.exam-card .exam-result{display:block;margin-top:6px;padding:3px 7px;border-radius:7px;background:rgba(37,99,235,.10);font-size:12px;font-weight:800;line-height:1.35}
-.sync-status-v1{margin-left:auto;font-size:12px;font-weight:800;padding:4px 8px;border:1px solid #ffffff40;border-radius:999px;color:#fff;background:#ffffff14;white-space:nowrap}
-.sync-status-v1.ok{background:#175c3a}.sync-status-v1.busy{background:#70551c}.sync-status-v1.offline{background:#555}.sync-status-v1.error{background:#7c1f27}
-@media(max-width:700px){.sync-status-v1{font-size:10px;padding:3px 6px}}
-</style></head>""",1)
+          extra_style=textwrap.dedent("""\
+              <style>
+              .exam-card.exam-completed{border:2px solid #2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.10) inset!important}
+              .exam-card .exam-result{display:block;margin-top:6px;padding:3px 7px;border-radius:7px;background:rgba(37,99,235,.10);font-size:12px;font-weight:800;line-height:1.35}
+              .sync-status-v1{margin-left:auto;font-size:12px;font-weight:800;padding:4px 8px;border:1px solid #ffffff40;border-radius:999px;color:#fff;background:#ffffff14;white-space:nowrap}
+              .sync-status-v1.ok{background:#175c3a}.sync-status-v1.busy{background:#70551c}.sync-status-v1.offline{background:#555}.sync-status-v1.error{background:#7c1f27}
+              @media(max-width:700px){.sync-status-v1{font-size:10px;padding:3px 6px}}
+              </style>
+              """)
+          if "</head>" not in t:
+              raise SystemExit("v1 head close tag not found")
+          t=t.replace("</head>",extra_style+"</head>",1)
 
-          old_loop="""  document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
-    const qs=Q.filter(q=>q.examCode===card.dataset.exam);
-    card.style.display=qs.length?'':'none';
-    const count=card.querySelector('span');
-    if(count)count.textContent=`${qs.length}問`;
-  });"""
-          new_loop="""  document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
-    const qs=Q.filter(q=>q.examCode===card.dataset.exam);
-    card.style.display=qs.length?'':'none';
-    const count=card.querySelector('span:not(.exam-result)');
-    if(count)count.textContent=`${qs.length}問`;
-    let answered=0,correct=0;
-    qs.forEach(q=>{
-      const m=db.mastery&&db.mastery[q.id];
-      if(m&&m.lastChoice!=null){
-        answered++;
-        if(Number(m.lastChoice)===Number(q.answer))correct++;
-      }
-    });
-    card.classList.toggle('exam-completed',answered===qs.length&&qs.length>0);
-    let result=card.querySelector('.exam-result');
-    if(answered){
-      if(!result){result=document.createElement('span');result.className='exam-result';card.appendChild(result)}
-      const rate=qs.length?Math.round(correct/qs.length*100):0;
-      result.textContent=answered===qs.length
-        ? `完了 ${correct}/${qs.length}（${rate}%）`
-        : `進捗 ${answered}/${qs.length}問・正解 ${correct}`;
-    }else if(result){result.remove()}
-  });"""
+          old_loop=textwrap.dedent("""\
+                document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
+                  const qs=Q.filter(q=>q.examCode===card.dataset.exam);
+                  card.style.display=qs.length?'':'none';
+                  const count=card.querySelector('span');
+                  if(count)count.textContent=`${qs.length}問`;
+                });""")
+          new_loop=textwrap.dedent("""\
+                document.querySelectorAll('.exam-card[data-exam]').forEach(card=>{
+                  const qs=Q.filter(q=>q.examCode===card.dataset.exam);
+                  card.style.display=qs.length?'':'none';
+                  const count=card.querySelector('span:not(.exam-result)');
+                  if(count)count.textContent=`${qs.length}問`;
+                  let answered=0,correct=0;
+                  qs.forEach(q=>{
+                    const m=db.mastery&&db.mastery[q.id];
+                    if(m&&m.lastChoice!=null){
+                      answered++;
+                      if(Number(m.lastChoice)===Number(q.answer))correct++;
+                    }
+                  });
+                  card.classList.toggle('exam-completed',answered===qs.length&&qs.length>0);
+                  let result=card.querySelector('.exam-result');
+                  if(answered){
+                    if(!result){result=document.createElement('span');result.className='exam-result';card.appendChild(result)}
+                    const rate=qs.length?Math.round(correct/qs.length*100):0;
+                    result.textContent=answered===qs.length
+                      ? `完了 ${correct}/${qs.length}（${rate}%）`
+                      : `進捗 ${answered}/${qs.length}問・正解 ${correct}`;
+                  }else if(result){result.remove()}
+                });""")
           if old_loop not in t:
               raise SystemExit("v1 exam loop not found")
           t=t.replace(old_loop,new_loop,1)
@@ -130,146 +138,147 @@ jobs:
 
           sync_marker="KOGAKU_V1_CLOUD_SYNC_V1"
           if sync_marker not in t:
-              sync_script=r"""<script>
-/* KOGAKU_V1_CLOUD_SYNC_V1 */
-(()=>{
-  const SESSION_KEY=(typeof SESSION!=='undefined')?SESSION:(STORE+'_session');
-  const META_KEY=STORE+'_cloud_meta';
-  const nativeSet=Storage.prototype.setItem;
-  const nativeRemove=Storage.prototype.removeItem;
-  let meta={sessionUpdatedAt:0};
-  try{
-    const x=JSON.parse(localStorage.getItem(META_KEY)||'null');
-    if(x&&typeof x==='object')meta=x;
-  }catch(e){}
-  if(!Number.isFinite(Number(meta.sessionUpdatedAt)))meta.sessionUpdatedAt=0;
+              sync_script=textwrap.dedent(r"""\
+                  <script>
+                  /* KOGAKU_V1_CLOUD_SYNC_V1 */
+                  (()=>{
+                    const SESSION_KEY=(typeof SESSION!=='undefined')?SESSION:(STORE+'_session');
+                    const META_KEY=STORE+'_cloud_meta';
+                    const nativeSet=Storage.prototype.setItem;
+                    const nativeRemove=Storage.prototype.removeItem;
+                    let meta={sessionUpdatedAt:0};
+                    try{
+                      const x=JSON.parse(localStorage.getItem(META_KEY)||'null');
+                      if(x&&typeof x==='object')meta=x;
+                    }catch(e){}
+                    if(!Number.isFinite(Number(meta.sessionUpdatedAt)))meta.sessionUpdatedAt=0;
+                    let timer=null,inFlight=false,queued=false,authKnown=false,applying=false;
 
-  let timer=null,inFlight=false,queued=false,authKnown=false,applying=false;
+                    function badge(){
+                      let el=document.getElementById('syncStatusV1');
+                      if(el)return el;
+                      el=document.createElement('div');
+                      el.id='syncStatusV1';el.className='sync-status-v1';el.textContent='同期準備中';
+                      const bar=document.querySelector('.topbar')||document.querySelector('header');
+                      if(bar){
+                        const home=document.getElementById('homeTop');
+                        if(home)bar.insertBefore(el,home);else bar.appendChild(el);
+                      }
+                      return el;
+                    }
+                    function status(text,kind=''){
+                      const el=badge();if(!el)return;
+                      el.textContent=text;el.className='sync-status-v1 '+kind;
+                    }
+                    function saveMeta(){
+                      try{nativeSet.call(localStorage,META_KEY,JSON.stringify(meta))}catch(e){}
+                    }
+                    function readSession(){
+                      try{return JSON.parse(localStorage.getItem(SESSION_KEY)||'null')}catch(e){return null}
+                    }
+                    function localSessionTs(){
+                      const x=readSession();
+                      return Math.max(Number(meta.sessionUpdatedAt||0),Number(x&&x.savedAt||0));
+                    }
+                    async function login(){
+                      const password=window.prompt('この端末を同期へ接続します。\\n同期パスワードを入力してください。');
+                      if(password===null)return false;
+                      const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
+                      if(!r.ok){window.alert('同期パスワードが違います。');return false}
+                      authKnown=true;return true;
+                    }
+                    async function ensureAuth(interactive=false){
+                      try{
+                        const r=await fetch('/api/state',{cache:'no-store'});
+                        if(r.ok){authKnown=true;return true}
+                        if(r.status===401&&interactive)return await login();
+                        return false;
+                      }catch(e){return false}
+                    }
+                    function normalizeDb(){
+                      if(!db||typeof db!=='object')db={mastery:{},attempts:[]};
+                      if(!db.mastery||typeof db.mastery!=='object')db.mastery={};
+                      if(!Array.isArray(db.attempts))db.attempts=[];
+                    }
+                    function applyRemote(data){
+                      if(data&&data.db&&typeof data.db==='object'){
+                        db=data.db;normalizeDb();
+                        applying=true;
+                        try{nativeSet.call(localStorage,STORE,JSON.stringify(db))}catch(e){}
+                        applying=false;
+                      }
+                      const remoteTs=Number(data&&data.sessionUpdatedAt||0);
+                      const localTs=localSessionTs();
+                      if(remoteTs>=localTs){
+                        applying=true;
+                        try{
+                          if(data&&data.session==null)nativeRemove.call(localStorage,SESSION_KEY);
+                          else if(data&&data.session)nativeSet.call(localStorage,SESSION_KEY,JSON.stringify(data.session));
+                        }catch(e){}
+                        applying=false;
+                        meta.sessionUpdatedAt=remoteTs;saveMeta();
+                      }
+                      try{renderHome()}catch(e){}
+                      try{if(typeof renderLatestSessionCard==='function')renderLatestSessionCard()}catch(e){}
+                    }
+                    async function syncNow(interactive=false){
+                      if(inFlight){queued=true;return}
+                      if(!navigator.onLine){status('オフライン','offline');return}
+                      inFlight=true;status('同期中','busy');
+                      try{
+                        if(!authKnown){
+                          const ok=await ensureAuth(interactive);
+                          if(!ok){status(interactive?'未接続':'要ログイン','error');return}
+                        }
+                        normalizeDb();
+                        const payload={db,session:readSession(),sessionUpdatedAt:localSessionTs()};
+                        let r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+                        if(r.status===401&&interactive){
+                          authKnown=false;
+                          if(await login())r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+                        }
+                        if(!r.ok)throw new Error('sync '+r.status);
+                        applyRemote(await r.json());
+                        status('同期済み','ok');
+                      }catch(e){
+                        console.warn('同期に失敗しました',e);authKnown=false;
+                        status(navigator.onLine?'同期失敗':'オフライン',navigator.onLine?'error':'offline');
+                      }finally{
+                        inFlight=false;
+                        if(queued){queued=false;queue(250)}
+                      }
+                    }
+                    function queue(delay=600){clearTimeout(timer);timer=setTimeout(()=>syncNow(false),delay)}
 
-  function badge(){
-    let el=document.getElementById('syncStatusV1');
-    if(el)return el;
-    el=document.createElement('div');
-    el.id='syncStatusV1';el.className='sync-status-v1';el.textContent='同期準備中';
-    const bar=document.querySelector('.topbar')||document.querySelector('header');
-    if(bar){
-      const home=document.getElementById('homeTop');
-      if(home)bar.insertBefore(el,home);else bar.appendChild(el);
-    }
-    return el;
-  }
-  function status(text,kind=''){
-    const el=badge();if(!el)return;
-    el.textContent=text;el.className='sync-status-v1 '+kind;
-  }
-  function saveMeta(){
-    try{nativeSet.call(localStorage,META_KEY,JSON.stringify(meta))}catch(e){}
-  }
-  function readSession(){
-    try{return JSON.parse(localStorage.getItem(SESSION_KEY)||'null')}catch(e){return null}
-  }
-  function localSessionTs(){
-    const s=readSession();
-    return Math.max(Number(meta.sessionUpdatedAt||0),Number(s&&s.savedAt||0));
-  }
-  async function login(){
-    const password=window.prompt('この端末を同期へ接続します。\\n同期パスワードを入力してください。');
-    if(password===null)return false;
-    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
-    if(!r.ok){window.alert('同期パスワードが違います。');return false}
-    authKnown=true;return true;
-  }
-  async function ensureAuth(interactive=false){
-    try{
-      const r=await fetch('/api/state',{cache:'no-store'});
-      if(r.ok){authKnown=true;return true}
-      if(r.status===401&&interactive)return await login();
-      return false;
-    }catch(e){return false}
-  }
-  function normalizeDb(){
-    if(!db||typeof db!=='object')db={mastery:{},attempts:[]};
-    if(!db.mastery||typeof db.mastery!=='object')db.mastery={};
-    if(!Array.isArray(db.attempts))db.attempts=[];
-  }
-  function applyRemote(data){
-    if(data&&data.db&&typeof data.db==='object'){
-      db=data.db;normalizeDb();
-      applying=true;
-      try{nativeSet.call(localStorage,STORE,JSON.stringify(db))}catch(e){}
-      applying=false;
-    }
-    const remoteTs=Number(data&&data.sessionUpdatedAt||0);
-    const localTs=localSessionTs();
-    if(remoteTs>=localTs){
-      applying=true;
-      try{
-        if(data&&data.session==null)nativeRemove.call(localStorage,SESSION_KEY);
-        else if(data&&data.session)nativeSet.call(localStorage,SESSION_KEY,JSON.stringify(data.session));
-      }catch(e){}
-      applying=false;
-      meta.sessionUpdatedAt=remoteTs;saveMeta();
-    }
-    try{renderHome()}catch(e){}
-    try{if(typeof renderLatestSessionCard==='function')renderLatestSessionCard()}catch(e){}
-  }
-  async function syncNow(interactive=false){
-    if(inFlight){queued=true;return}
-    if(!navigator.onLine){status('オフライン','offline');return}
-    inFlight=true;status('同期中','busy');
-    try{
-      if(!authKnown){
-        const ok=await ensureAuth(interactive);
-        if(!ok){status(interactive?'未接続':'要ログイン','error');return}
-      }
-      normalizeDb();
-      const payload={db,session:readSession(),sessionUpdatedAt:localSessionTs()};
-      let r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      if(r.status===401&&interactive){
-        authKnown=false;
-        if(await login())r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      }
-      if(!r.ok)throw new Error('sync '+r.status);
-      applyRemote(await r.json());
-      status('同期済み','ok');
-    }catch(e){
-      console.warn('同期に失敗しました',e);authKnown=false;
-      status(navigator.onLine?'同期失敗':'オフライン',navigator.onLine?'error':'offline');
-    }finally{
-      inFlight=false;
-      if(queued){queued=false;queue(250)}
-    }
-  }
-  function queue(delay=600){clearTimeout(timer);timer=setTimeout(()=>syncNow(false),delay)}
+                    Storage.prototype.setItem=function(key,value){
+                      nativeSet.call(this,key,value);
+                      if(this===localStorage&&!applying&&(key===STORE||key===SESSION_KEY)){
+                        if(key===SESSION_KEY){
+                          try{
+                            const v=JSON.parse(value||'null');
+                            meta.sessionUpdatedAt=Math.max(Date.now(),Number(v&&v.savedAt||0));
+                            saveMeta();
+                          }catch(e){}
+                        }
+                        queue();
+                      }
+                    };
+                    Storage.prototype.removeItem=function(key){
+                      nativeRemove.call(this,key);
+                      if(this===localStorage&&!applying&&(key===STORE||key===SESSION_KEY)){
+                        if(key===SESSION_KEY){meta.sessionUpdatedAt=Date.now();saveMeta()}
+                        queue();
+                      }
+                    };
 
-  Storage.prototype.setItem=function(key,value){
-    nativeSet.call(this,key,value);
-    if(this===localStorage&&!applying&&(key===STORE||key===SESSION_KEY)){
-      if(key===SESSION_KEY){
-        try{
-          const v=JSON.parse(value||'null');
-          meta.sessionUpdatedAt=Math.max(Date.now(),Number(v&&v.savedAt||0));
-          saveMeta();
-        }catch(e){}
-      }
-      queue();
-    }
-  };
-  Storage.prototype.removeItem=function(key){
-    nativeRemove.call(this,key);
-    if(this===localStorage&&!applying&&(key===STORE||key===SESSION_KEY)){
-      if(key===SESSION_KEY){meta.sessionUpdatedAt=Date.now();saveMeta()}
-      queue();
-    }
-  };
-
-  window.addEventListener('online',()=>{status('再接続','busy');queue(100)});
-  window.addEventListener('offline',()=>status('オフライン','offline'));
-  window.addEventListener('focus',()=>queue(150));
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)queue(150)});
-  window.addEventListener('load',()=>{badge();status('接続確認','busy');syncNow(true)});
-})();
-</script>"""
+                    window.addEventListener('online',()=>{status('再接続','busy');queue(100)});
+                    window.addEventListener('offline',()=>status('オフライン','offline'));
+                    window.addEventListener('focus',()=>queue(150));
+                    document.addEventListener('visibilitychange',()=>{if(!document.hidden)queue(150)});
+                    window.addEventListener('load',()=>{badge();status('接続確認','busy');syncNow(true)});
+                  })();
+                  </script>
+                  """)
               if "</body>" not in t:
                   raise SystemExit("v1 body close tag not found")
               t=t.replace("</body>",sync_script+"</body>",1)
