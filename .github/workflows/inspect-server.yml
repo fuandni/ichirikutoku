@@ -39,9 +39,8 @@ jobs:
         shell: bash
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
-          OCI_USER: ${{ secrets.OCI_USER }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" 'bash -s' <<'REMOTE'
+          ssh -i ~/.ssh/id_ed25519 "opc@${OCI_HOST}" 'bash -s' <<'REMOTE'
           set -e
           echo "=== HOST ==="
           hostname
