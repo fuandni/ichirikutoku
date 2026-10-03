@@ -25,6 +25,8 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          echo "=== ACTIONS PUBLIC KEY ==="
+          ssh-keygen -y -f ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -t ed25519 "$OCI_HOST" > /tmp/oci_ed25519
           ACTUAL="$(ssh-keygen -lf /tmp/oci_ed25519 -E sha256 | awk '{print $2}')"
           EXPECTED="SHA256:WGNqmz/giwW4QexkH1gE+9UJ0t7nQmyPXrH/Bbf5gow"
