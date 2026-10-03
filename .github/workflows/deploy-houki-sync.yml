@@ -96,8 +96,8 @@ jobs:
           LOGIN_JSON="$(sudo /opt/ichirikutoku/venv/bin/python -c 'import json; from dotenv import dotenv_values; v=dotenv_values("/opt/ichirikutoku/.env"); print(json.dumps({"password":v["QUIZ_PASSWORD"]}))')"
           COOKIE="$(mktemp)"
           trap 'rm -f "$COOKIE"' EXIT
-          curl --fail --silent -c "$COOKIE" -H 'Content-Type: application/json' -d "$LOGIN_JSON" http://127.0.0.1:8000/api/login >/dev/null
-          curl --fail --silent -b "$COOKIE" http://127.0.0.1:8000/api/houki/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
+          curl --insecure --fail --silent -c "$COOKIE" -H 'Content-Type: application/json' -d "$LOGIN_JSON" https://127.0.0.1/api/login >/dev/null
+          curl --insecure --fail --silent -b "$COOKIE" https://127.0.0.1/api/houki/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
 
           python3 - <<'PY'
           import sqlite3
