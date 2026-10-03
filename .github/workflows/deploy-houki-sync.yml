@@ -90,8 +90,8 @@ jobs:
           sudo systemctl is-active --quiet ichirikutoku
           grep -q "HOUKI_CLOUD_SYNC_V1" /var/www/ichirikutoku/houki-practice/index.html
 
-          curl --fail --silent http://127.0.0.1:8000/health >/dev/null
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/houki/state)" = "401"
+          curl --fail --silent --retry 10 --retry-delay 1 --retry-connrefused http://127.0.0.1:8000/health >/dev/null
+          test "$(curl --silent --retry 5 --retry-delay 1 --retry-connrefused --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/houki/state)" = "401"
 
           set -a
           . /opt/ichirikutoku/.env
