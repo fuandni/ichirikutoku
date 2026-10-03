@@ -1,4 +1,4 @@
-name: Inspect remaining quiz questions
+name: Inspect sync backend
 
 on:
   push:
@@ -27,47 +27,37 @@ jobs:
           printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Compare current answers with deployed questions
+      - name: Inspect backend safely
         shell: bash
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
           OCI_USER: ${{ secrets.OCI_USER }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" 'python3 -' <<'PY'
-          import json, sqlite3
-          from pathlib import Path
-
-          html=Path("/var/www/ichirikutoku/index.html").read_text(encoding="utf-8")
-          marker="const Q="
-          start=html.index(marker)+len(marker)
-          end=html.index("];", start)+1
-          questions=json.loads(html[start:end])
-
-          con=sqlite3.connect("/opt/ichirikutoku/data/progress.db")
-          row=con.execute("select db_json from state where id=1").fetchone()
+          ssh -i ~/.ssh/id_ed25519 "${OCI_USER}@${OCI_HOST}" 'bash -s' <<'REMOTE'
+          set -e
+          echo "=== HOST ==="
+          hostname
+          echo "=== SERVICES ==="
+          systemctl is-active nginx || true
+          systemctl is-active ichirikutoku || true
+          echo "=== UNIT ==="
+          sudo systemctl cat ichirikutoku 2>/dev/null | sed -E "s/(Environment=|PASSWORD|SECRET|TOKEN).*/[redacted]/Ig" || true
+          echo "=== OPT TREE ==="
+          sudo find /opt/ichirikutoku -maxdepth 3 -type f -printf "%p\n" 2>/dev/null | sort || true
+          echo "=== PYTHON SOURCES ==="
+          while IFS= read -r f; do
+            echo "--- $f ---"
+            sudo sed -E "s/((PASSWORD|SECRET|TOKEN|KEY)[A-Za-z0-9_]*[[:space:]]*=[[:space:]]*).*/\\1[redacted]/Ig" "$f"
+          done < <(sudo find /opt/ichirikutoku -maxdepth 3 -type f \( -name "*.py" -o -name "*.js" \) 2>/dev/null | sort)
+          echo "=== SQLITE SCHEMA ==="
+          if [ -f /opt/ichirikutoku/data/progress.db ]; then
+            python3 - <<'PY'
+          import sqlite3
+          p="/opt/ichirikutoku/data/progress.db"
+          con=sqlite3.connect(p)
+          for row in con.execute("select name, sql from sqlite_master where type in ('table','index') order by type,name"):
+              print(row[0], row[1])
           con.close()
-          db=json.loads(row[0]) if row and row[0] else {"mastery":{}}
-          mastery=db.get("mastery") or {}
-
-          correct=[]
-          wrong=[]
-          unanswered=[]
-          for q in questions:
-              m=mastery.get(q["id"])
-              if not m or m.get("lastChoice") is None:
-                  unanswered.append(q["id"])
-              elif int(m["lastChoice"])==int(q["answer"]):
-                  correct.append(q["id"])
-              else:
-                  wrong.append(q["id"])
-
-          print("TOTAL",len(questions))
-          print("CORRECT",len(correct))
-          print("WRONG",len(wrong))
-          print("UNANSWERED",len(unanswered))
-          print("REMAINING",len(wrong)+len(unanswered))
-          print("CORRECT_IDS",json.dumps(correct,ensure_ascii=False))
-          print("REMAINING_IDS",json.dumps(wrong+unanswered,ensure_ascii=False))
           PY
-
-# manual inspection trigger: 2026-09-21 v2 preparation
+          fi
+          REMOTE
