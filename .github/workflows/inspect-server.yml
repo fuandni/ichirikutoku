@@ -19,12 +19,18 @@ jobs:
         shell: bash
         env:
           OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
-          OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
+          OCI_HOST: ${{ secrets.OCI_HOST }}
         run: |
+          set -euo pipefail
           install -m 700 -d ~/.ssh
           printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh-keyscan -T 10 -t ed25519 "$OCI_HOST" > /tmp/oci_ed25519
+          ACTUAL="$(ssh-keygen -lf /tmp/oci_ed25519 -E sha256 | awk '{print $2}')"
+          EXPECTED="SHA256:WGNqmz/giwW4QexkH1gE+9UJ0t7nQmyPXrH/Bbf5gow"
+          echo "OCI host key fingerprint: $ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+          cp /tmp/oci_ed25519 ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Inspect backend safely
