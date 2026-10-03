@@ -93,13 +93,11 @@ jobs:
           curl --fail --silent --retry 10 --retry-delay 1 --retry-connrefused http://127.0.0.1:8000/health >/dev/null
           test "$(curl --silent --retry 5 --retry-delay 1 --retry-connrefused --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/houki/state)" = "401"
 
-          set -a
-          . /opt/ichirikutoku/.env
-          set +a
+          LOGIN_JSON="$(sudo /opt/ichirikutoku/venv/bin/python -c 'import json; from dotenv import dotenv_values; v=dotenv_values("/opt/ichirikutoku/.env"); print(json.dumps({"password":v["QUIZ_PASSWORD"]}))')"
           COOKIE="$(mktemp)"
           trap 'rm -f "$COOKIE"' EXIT
-          curl --fail --silent -c "$COOKIE"             -H 'Content-Type: application/json'             -d "$(python3 -c 'import json,os; print(json.dumps({"password":os.environ["QUIZ_PASSWORD"]}))')"             http://127.0.0.1:8000/api/login >/dev/null
-          curl --fail --silent -b "$COOKIE" http://127.0.0.1:8000/api/houki/state |             python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
+          curl --fail --silent -c "$COOKIE" -H 'Content-Type: application/json' -d "$LOGIN_JSON" http://127.0.0.1:8000/api/login >/dev/null
+          curl --fail --silent -b "$COOKIE" http://127.0.0.1:8000/api/houki/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
 
           python3 - <<'PY'
           import sqlite3
