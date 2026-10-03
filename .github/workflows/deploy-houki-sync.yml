@@ -1,0 +1,127 @@
+name: Deploy law cloud sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "server/app.py"
+      - "scripts/patch_houki_sync.py"
+      - ".github/workflows/deploy-houki-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ichirikutoku-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate backend and page patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile server/app.py scripts/patch_houki_sync.py
+          rm -rf /tmp/houki-check
+          mkdir -p /tmp/houki-check
+          unzip -q ichirikutoku_oci_unified_no198_patched.zip -d /tmp/houki-check
+          python3 scripts/patch_houki_sync.py /tmp/houki-check/ichirikutoku_unified/houki-practice/index.html
+          grep -q "HOUKI_CLOUD_SYNC_V1" /tmp/houki-check/ichirikutoku_unified/houki-practice/index.html
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p=Path("/tmp/houki-check/ichirikutoku_unified/houki-practice/index.html")
+          scripts=re.findall(r"<script(?:\\s[^>]*)?>(.*?)</script>",p.read_text(encoding="utf-8"),flags=re.I|re.S)
+          Path("/tmp/houki-check.js").write_text("\n".join(scripts),encoding="utf-8")
+          print("script blocks",len(scripts))
+          PY
+          node --check /tmp/houki-check.js
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -t ed25519 "$OCI_HOST" > /tmp/oci_ed25519
+          ACTUAL="$(ssh-keygen -lf /tmp/oci_ed25519 -E sha256 | awk '{print $2}')"
+          EXPECTED="SHA256:WGNqmz/giwW4QexkH1gE+9UJ0t7nQmyPXrH/Bbf5gow"
+          echo "OCI host key fingerprint: $ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+          cp /tmp/oci_ed25519 ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload sync files
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/id_ed25519 server/app.py "opc@${OCI_HOST}:/home/opc/app.py.houki-upload"
+          scp -i ~/.ssh/id_ed25519 scripts/patch_houki_sync.py "opc@${OCI_HOST}:/home/opc/patch_houki_sync.py"
+
+      - name: Install and verify on server
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "opc@${OCI_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          TS="$(date +%Y%m%d-%H%M%S)"
+          sudo cp -a /opt/ichirikutoku/backend/app.py "/opt/ichirikutoku/backend/app.py.bak-${TS}"
+          sudo cp -a /var/www/ichirikutoku/houki-practice/index.html "/var/www/ichirikutoku/houki-practice/index.html.bak-${TS}"
+          sudo cp -a /opt/ichirikutoku/data/progress.db "/opt/ichirikutoku/data/progress.db.bak-${TS}"
+
+          sudo install -o ichirikutoku -g ichirikutoku -m 0644             /home/opc/app.py.houki-upload /opt/ichirikutoku/backend/app.py
+          sudo python3 /home/opc/patch_houki_sync.py /var/www/ichirikutoku/houki-practice/index.html
+
+          sudo systemctl restart ichirikutoku
+          sudo systemctl is-active --quiet ichirikutoku
+          grep -q "HOUKI_CLOUD_SYNC_V1" /var/www/ichirikutoku/houki-practice/index.html
+
+          curl --fail --silent http://127.0.0.1:8000/health >/dev/null
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/houki/state)" = "401"
+
+          set -a
+          . /opt/ichirikutoku/.env
+          set +a
+          COOKIE="$(mktemp)"
+          trap 'rm -f "$COOKIE"' EXIT
+          curl --fail --silent -c "$COOKIE"             -H 'Content-Type: application/json'             -d "$(python3 -c 'import json,os; print(json.dumps({"password":os.environ["QUIZ_PASSWORD"]}))')"             http://127.0.0.1:8000/api/login >/dev/null
+          curl --fail --silent -b "$COOKIE" http://127.0.0.1:8000/api/houki/state |             python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
+
+          python3 - <<'PY'
+          import sqlite3
+          con=sqlite3.connect("/opt/ichirikutoku/data/progress.db")
+          names={r[0] for r in con.execute("select name from sqlite_master where type='table'")}
+          assert "state" in names
+          assert "houki_state" in names
+          print("tables:", sorted(names))
+          con.close()
+          PY
+          echo "Server law sync verification OK"
+          REMOTE
+
+      - name: Verify public endpoints
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent "https://${OCI_HOST}/health" >/dev/null
+          curl --fail --show-error --silent "https://${OCI_HOST}/houki-practice/index.html" -o /tmp/houki-live.html
+          grep -q "HOUKI_CLOUD_SYNC_V1" /tmp/houki-live.html
+          CODE="$(curl --silent --output /dev/null --write-out '%{http_code}' "https://${OCI_HOST}/api/houki/state")"
+          test "$CODE" = "401"
+          echo "Public law sync verification OK"
