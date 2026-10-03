@@ -56,6 +56,10 @@ jobs:
             echo "--- $f ---"
             sudo sed -E "s/((PASSWORD|SECRET|TOKEN|KEY)[A-Za-z0-9_]*[[:space:]]*=[[:space:]]*).*/\\1[redacted]/Ig" "$f"
           done < <(sudo find /opt/ichirikutoku -maxdepth 3 -type f \( -name "*.py" -o -name "*.js" \) 2>/dev/null | sort)
+          echo "=== DEPLOY SCRIPT ==="
+          sudo cat /usr/local/sbin/deploy-ichirikutoku 2>/dev/null || true
+          echo "=== NGINX ICHIRIKUTOKU ==="
+          sudo nginx -T 2>/dev/null | sed -n '/server_name .*152\.69\.205\.67/,/^[[:space:]]*}/p' | head -220 || true
           echo "=== SQLITE SCHEMA ==="
           if [ -f /opt/ichirikutoku/data/progress.db ]; then
             python3 - <<'PY'
