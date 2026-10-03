@@ -47,6 +47,8 @@ jobs:
           echo "=== SERVICES ==="
           systemctl is-active nginx || true
           systemctl is-active ichirikutoku || true
+          echo "=== JOURNAL ==="
+          sudo journalctl -u ichirikutoku -n 100 --no-pager 2>/dev/null || true
           echo "=== UNIT ==="
           sudo systemctl cat ichirikutoku 2>/dev/null | sed -E "s/(Environment=|PASSWORD|SECRET|TOKEN).*/[redacted]/Ig" || true
           echo "=== OPT TREE ==="
