@@ -1,5 +1,6 @@
-import os, json, time, hmac, hashlib, base64, sqlite3, secrets
+import os, json, time, hmac, hashlib, base64, secrets
 from pathlib import Path
+import oracledb
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -7,55 +8,44 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 APP_DIR = Path(__file__).resolve().parent
-DB_PATH = Path(os.environ.get('DB_PATH', str(APP_DIR / 'progress.db')))
 QUIZ_PASSWORD = os.environ.get('QUIZ_PASSWORD', '')
 SESSION_SECRET = os.environ.get('SESSION_SECRET', '')
 COOKIE_SECURE = os.environ.get('COOKIE_SECURE', 'true').lower() not in ('0', 'false', 'no')
 COOKIE_NAME = 'ichirikutoku_session'
 COOKIE_DAYS = int(os.environ.get('COOKIE_DAYS', '365'))
 
+ORACLE_USER = os.environ.get('ORACLE_USER', '')
+ORACLE_PASSWORD = os.environ.get('ORACLE_PASSWORD', '')
+ORACLE_DSN = os.environ.get('ORACLE_DSN', '')
+
 if not QUIZ_PASSWORD:
     raise RuntimeError('QUIZ_PASSWORD is required')
 if len(SESSION_SECRET) < 32:
     raise RuntimeError('SESSION_SECRET must be at least 32 characters')
+if not ORACLE_USER:
+    raise RuntimeError('ORACLE_USER is required')
+if not ORACLE_PASSWORD:
+    raise RuntimeError('ORACLE_PASSWORD is required')
+if not ORACLE_DSN:
+    raise RuntimeError('ORACLE_DSN is required')
 
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title='Ichirikutoku Progress Sync', docs_url=None, redoc_url=None, openapi_url=None)
 
 
 def db_conn():
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    con.execute('PRAGMA journal_mode=WAL')
-    con.execute('PRAGMA synchronous=NORMAL')
-    return con
+    return oracledb.connect(
+        user=ORACLE_USER,
+        password=ORACLE_PASSWORD,
+        dsn=ORACLE_DSN
+    )
 
 
-def init_db():
-    with db_conn() as con:
-        con.execute('''
-            CREATE TABLE IF NOT EXISTS state (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                db_json TEXT NOT NULL DEFAULT '{"mastery":{},"attempts":[]}',
-                session_json TEXT,
-                session_updated_at INTEGER NOT NULL DEFAULT 0,
-                updated_at INTEGER NOT NULL DEFAULT 0
-            )
-        ''')
-        con.execute('INSERT OR IGNORE INTO state(id) VALUES (1)')
-        con.execute('''
-            CREATE TABLE IF NOT EXISTS houki_state (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                state_json TEXT NOT NULL DEFAULT '{}',
-                updated_at INTEGER NOT NULL DEFAULT 0
-            )
-        ''')
-        con.execute('INSERT OR IGNORE INTO houki_state(id) VALUES (1)')
-        con.commit()
-
-
-init_db()
-
+def lob_text(value):
+    if value is None:
+        return None
+    if hasattr(value, 'read'):
+        return value.read()
+    return value
 
 def b64u(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip('=')
@@ -297,15 +287,33 @@ def logout(request: Request, response: Response):
 @app.get('/api/state')
 def state(request: Request):
     require_auth(request)
-    with db_conn() as con:
-        row = con.execute('SELECT * FROM state WHERE id=1').fetchone()
-    db_obj = json.loads(row['db_json']) if row['db_json'] else {'mastery': {}, 'attempts': []}
-    session_obj = json.loads(row['session_json']) if row['session_json'] else None
+
+    con = db_conn()
+    try:
+        cur = con.cursor()
+        cur.execute(
+            'SELECT db_json, session_json, session_updated_at, updated_at '
+            'FROM state WHERE id=1'
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError('state id=1 not found')
+
+        db_json = lob_text(row[0])
+        session_json = lob_text(row[1])
+        session_updated_at = int(row[2] or 0)
+        updated_at = int(row[3] or 0)
+    finally:
+        con.close()
+
+    db_obj = json.loads(db_json) if db_json else {'mastery': {}, 'attempts': []}
+    session_obj = json.loads(session_json) if session_json else None
+
     return {
         'db': db_obj,
         'session': session_obj,
-        'sessionUpdatedAt': int(row['session_updated_at'] or 0),
-        'updatedAt': int(row['updated_at'] or 0)
+        'sessionUpdatedAt': session_updated_at,
+        'updatedAt': updated_at
     }
 
 
@@ -313,27 +321,64 @@ def state(request: Request):
 def sync(body: SyncBody, request: Request):
     require_auth(request)
     now = int(time.time() * 1000)
-    with db_conn() as con:
-        con.execute('BEGIN IMMEDIATE')
-        row = con.execute('SELECT * FROM state WHERE id=1').fetchone()
-        server_db = json.loads(row['db_json']) if row['db_json'] else {'mastery': {}, 'attempts': []}
+
+    con = db_conn()
+    try:
+        cur = con.cursor()
+        cur.execute(
+            'SELECT db_json, session_json, session_updated_at, updated_at '
+            'FROM state WHERE id=1 FOR UPDATE'
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError('state id=1 not found')
+
+        server_db_json = lob_text(row[0])
+        server_db = json.loads(server_db_json) if server_db_json else {
+            'mastery': {},
+            'attempts': []
+        }
         merged = merge_db(server_db, body.db)
 
-        server_session_updated = int(row['session_updated_at'] or 0)
-        server_session_json = row['session_json']
+        server_session_updated = int(row[2] or 0)
+        server_session_json = lob_text(row[1])
+
         if int(body.sessionUpdatedAt or 0) >= server_session_updated:
-            session_json = json.dumps(body.session, ensure_ascii=False, separators=(',', ':')) if body.session is not None else None
+            session_json = (
+                json.dumps(body.session, ensure_ascii=False, separators=(',', ':'))
+                if body.session is not None else None
+            )
             session_updated = int(body.sessionUpdatedAt or 0)
         else:
             session_json = server_session_json
             session_updated = server_session_updated
 
         db_json = json.dumps(merged, ensure_ascii=False, separators=(',', ':'))
-        con.execute(
-            'UPDATE state SET db_json=?, session_json=?, session_updated_at=?, updated_at=? WHERE id=1',
-            (db_json, session_json, session_updated, now)
+
+        cur.setinputsizes(
+            db_json=oracledb.DB_TYPE_CLOB,
+            session_json=oracledb.DB_TYPE_CLOB
+        )
+        cur.execute(
+            '''
+            UPDATE state
+               SET db_json = :db_json,
+                   session_json = :session_json,
+                   session_updated_at = :session_updated_at,
+                   updated_at = :updated_at
+             WHERE id = 1
+            ''',
+            db_json=db_json,
+            session_json=session_json,
+            session_updated_at=session_updated,
+            updated_at=now
         )
         con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
 
     session_obj = json.loads(session_json) if session_json else None
     return {
@@ -347,10 +392,24 @@ def sync(body: SyncBody, request: Request):
 @app.get('/api/houki/state')
 def houki_state(request: Request):
     require_auth(request)
-    with db_conn() as con:
-        row = con.execute('SELECT * FROM houki_state WHERE id=1').fetchone()
-    state_obj = normalize_houki(json.loads(row['state_json']) if row['state_json'] else {})
-    updated = int(row['updated_at'] or 0)
+
+    con = db_conn()
+    try:
+        cur = con.cursor()
+        cur.execute(
+            'SELECT state_json, updated_at '
+            'FROM houki_state WHERE id=1'
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError('houki_state id=1 not found')
+
+        state_json = lob_text(row[0])
+        updated = int(row[1] or 0)
+    finally:
+        con.close()
+
+    state_obj = normalize_houki(json.loads(state_json) if state_json else {})
     state_obj['_sync']['updatedAt'] = updated
     return {'state': state_obj, 'updatedAt': updated}
 
@@ -358,19 +417,60 @@ def houki_state(request: Request):
 @app.post('/api/houki/sync')
 def houki_sync(body: HoukiSyncBody, request: Request):
     require_auth(request)
-    embedded = (body.state.get('_sync') or {}).get('updatedAt') if isinstance(body.state.get('_sync'), dict) else 0
+    embedded = (
+        (body.state.get('_sync') or {}).get('updatedAt')
+        if isinstance(body.state.get('_sync'), dict)
+        else 0
+    )
     client_updated = max(_int(body.updatedAt, 0), _int(embedded, 0))
-    with db_conn() as con:
-        con.execute('BEGIN IMMEDIATE')
-        row = con.execute('SELECT * FROM houki_state WHERE id=1').fetchone()
-        server_updated = int(row['updated_at'] or 0)
-        server_state = json.loads(row['state_json']) if row['state_json'] else {}
-        merged = merge_houki(server_state, body.state, server_updated, client_updated)
+
+    con = db_conn()
+    try:
+        cur = con.cursor()
+        cur.execute(
+            'SELECT state_json, updated_at '
+            'FROM houki_state WHERE id=1 FOR UPDATE'
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError('houki_state id=1 not found')
+
+        server_updated = int(row[1] or 0)
+        server_json = lob_text(row[0])
+        server_state = json.loads(server_json) if server_json else {}
+
+        merged = merge_houki(
+            server_state,
+            body.state,
+            server_updated,
+            client_updated
+        )
         merged_updated = max(server_updated, client_updated)
         merged['_sync']['updatedAt'] = merged_updated
-        state_json = json.dumps(merged, ensure_ascii=False, separators=(',', ':'))
-        con.execute('UPDATE houki_state SET state_json=?, updated_at=? WHERE id=1', (state_json, merged_updated))
+        state_json = json.dumps(
+            merged,
+            ensure_ascii=False,
+            separators=(',', ':')
+        )
+
+        cur.setinputsizes(state_json=oracledb.DB_TYPE_CLOB)
+        cur.execute(
+            '''
+            UPDATE houki_state
+               SET state_json = :state_json,
+                   updated_at = :updated_at
+             WHERE id = 1
+            ''',
+            state_json=state_json,
+            updated_at=merged_updated
+        )
         con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+
     return {'state': merged, 'updatedAt': merged_updated}
 
 
