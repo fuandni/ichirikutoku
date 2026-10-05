@@ -81,9 +81,16 @@ jobs:
           TS="$(date +%Y%m%d-%H%M%S)"
           sudo cp -a /opt/ichirikutoku/backend/app.py "/opt/ichirikutoku/backend/app.py.bak-${TS}"
           sudo cp -a /var/www/ichirikutoku/houki-practice/index.html "/var/www/ichirikutoku/houki-practice/index.html.bak-${TS}"
-          sudo cp -a /opt/ichirikutoku/data/progress.db "/opt/ichirikutoku/data/progress.db.bak-${TS}"
+          if [ -f /opt/ichirikutoku/data/progress.db ]; then
+            sudo cp -a /opt/ichirikutoku/data/progress.db "/opt/ichirikutoku/data/progress.db.bak-${TS}"
+          fi
 
-          sudo install -o ichirikutoku -g ichirikutoku -m 0644             /home/opc/app.py.houki-upload /opt/ichirikutoku/backend/app.py
+          sudo grep -q '^ORACLE_USER=' /opt/ichirikutoku/.env
+          sudo grep -q '^ORACLE_PASSWORD=' /opt/ichirikutoku/.env
+          sudo grep -q '^ORACLE_DSN=' /opt/ichirikutoku/.env
+          sudo /opt/ichirikutoku/venv/bin/pip install --disable-pip-version-check --quiet oracledb
+
+          sudo install -o ichirikutoku -g ichirikutoku -m 0644 /home/opc/app.py.houki-upload /opt/ichirikutoku/backend/app.py
           sudo python3 /home/opc/patch_houki_sync.py /var/www/ichirikutoku/houki-practice/index.html
 
           sudo systemctl restart ichirikutoku
@@ -99,16 +106,9 @@ jobs:
           curl --insecure --fail --silent -c "$COOKIE" -H 'Content-Type: application/json' -d "$LOGIN_JSON" https://127.0.0.1/api/login >/dev/null
           curl --insecure --fail --silent -b "$COOKIE" https://127.0.0.1/api/houki/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
 
-          python3 - <<'PY'
-          import sqlite3
-          con=sqlite3.connect("/opt/ichirikutoku/data/progress.db")
-          names={r[0] for r in con.execute("select name from sqlite_master where type='table'")}
-          assert "state" in names
-          assert "houki_state" in names
-          print("tables:", sorted(names))
-          con.close()
-          PY
-          echo "Server law sync verification OK"
+          curl --insecure --fail --silent -b "$COOKIE" https://127.0.0.1/api/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "db" in x and "updatedAt" in x'
+          curl --insecure --fail --silent -b "$COOKIE" https://127.0.0.1/api/houki/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
+          echo "Server Oracle sync verification OK"
           REMOTE
 
       - name: Verify public endpoints
