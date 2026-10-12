@@ -1,0 +1,41 @@
+name: Verify home law-exam link
+
+on:
+  pull_request:
+    paths:
+      - "scripts/patch_home_law_exam_link.py"
+      - ".github/workflows/verify-home-link.yml"
+      - ".github/workflows/deploy-houki-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read current production home and test patch
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/patch_home_law_exam_link.py
+          curl --fail --show-error --silent --retry 3 --retry-delay 2 --connect-timeout 10 \
+            https://152.69.205.67/home/index.html -o /tmp/ichiriku-home-before.html
+          cp /tmp/ichiriku-home-before.html /tmp/ichiriku-home-after.html
+          python3 scripts/patch_home_law_exam_link.py /tmp/ichiriku-home-after.html
+          python3 scripts/patch_home_law_exam_link.py /tmp/ichiriku-home-after.html
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          before=Path('/tmp/ichiriku-home-before.html').read_text(encoding='utf-8')
+          after=Path('/tmp/ichiriku-home-after.html').read_text(encoding='utf-8')
+          assert before.count('法規・演習') == 1
+          assert after.count('法規・演習') == 1
+          assert after.count('法規・試験回別演習') == 1
+          assert after.count('id="law-yearly-exam-card"') == 1
+          assert '/houki-practice/#houkiSessionCards' in after
+          assert after.count('<a ') == before.count('<a ') + 1, 'Card added exactly once'
+          assert len(after) > len(before)
+          print('PASS: original home routes intact, fifth card added, idempotent patch')
+          PY
