@@ -43,3 +43,20 @@ jobs:
           print("Law page patched; original form controls are preserved.")
           PY
           node --check /tmp/houki-exam-cards.js
+
+
+      - name: Inspect native law record and picker shape (no data modification)
+        run: |
+          PAGE=/tmp/ichiriku-houki/ichirikutoku_unified/houki-practice/index.html
+          PAGE="$PAGE" python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+          s=Path(os.environ["PAGE"]).read_text(encoding="utf-8")
+          print("Source size",len(s))
+          print("Native question-ID literals",len(set(re.findall(r'JY\d{2}[AB]-\d{2}',s))))
+          for pattern in [r'function\s+mark\s*\(',r'(?:let|const|var)\s+rec\s*=',r'function\s+pick\s*\(',r'function\s+next\w*\s*\(',r'const\s+STORE_KEY',r'function\s+render\w*\s*\(']:
+              m=re.search(pattern,s)
+              print("PATTERN",pattern,"MATCH",bool(m))
+              if m:
+                  print(re.sub(r'\s+',' ',s[m.start():m.start()+400])[:400])
+          PY
