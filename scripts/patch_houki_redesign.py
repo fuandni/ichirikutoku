@@ -139,14 +139,12 @@ function mount(){
     const card=e.target.closest(".houki-exam-card");
     const recent=e.target.closest(".houki-recent-row");
     if(!card&&!recent)return;
-    queueMicrotask(()=>{if(!answer.hidden)view("exam")});
+    if(!answer.hidden)view("exam");
   });
   answer.addEventListener("click",e=>{
     const btn=e.target.closest(".houki-next-question");
     if(!btn)return;
-    queueMicrotask(()=>{
-      if(answer.hidden&&!document.body.classList.contains("houki-fixed-exam"))view("home");
-    });
+    if(answer.hidden&&!document.body.classList.contains("houki-fixed-exam"))view("home");
   });
   // Native question changes must scroll the new question stage, not the hidden legacy page.
   if(typeof scrollQuestionTop==="function"){
