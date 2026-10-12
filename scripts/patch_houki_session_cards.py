@@ -88,7 +88,7 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
   const entryList=sessions.flatMap(s=>["A","B"].map(slot=>({
     label:s.label+" "+slot,term:s.label+"期",slot:slot,prefix:"JY"+s.p+slot+"-"
   })));
-  let activePrefix="",exam=null;
+  let activePrefix="",exam=null,finishedEntry=null;
   function records(){try{return typeof rec==="object"&&rec?rec:{}}catch(e){return {}}}
   function tally(prefix){
     const r=records();let answered=0,correct=0,wrong=0;
@@ -106,8 +106,8 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     });
   }
   function quitFixedMode(){
-    if(!exam)return;
-    exam=null;activePrefix="";document.body.classList.remove("houki-fixed-exam");clearSelection();
+    if(!exam&&!finishedEntry)return;
+    exam=null;finishedEntry=null;activePrefix="";document.body.classList.remove("houki-fixed-exam");clearSelection();
     updateAnswerPanel();
     const notice=document.getElementById("houkiSessionNotice");
     if(notice)notice.textContent="試験回別モードを終了し、通常演習へ戻りました。";
@@ -116,7 +116,7 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     if(!exam)return;
     const item=ITEMS.find(x=>x.id===exam.ids[pos]);
     if(!item){quitFixedMode();return}
-    exam.pos=pos;exam.graded=false;
+    exam.pos=pos;exam.graded=false;finishedEntry=null;
     document.body.classList.add("houki-fixed-exam");
     show(item);
     updateAnswerPanel();
@@ -129,6 +129,9 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     if(!box)return;
     box.hidden=!exam;
     if(!exam)return;
+    box.querySelector(".houki-number-buttons").style.display="grid";
+    box.querySelector(".houki-answer-title").textContent="回答を選択";
+    box.querySelector(".houki-answer-hint").textContent="上の選択肢を読んで、正しい番号を選んでください。";
     const feedback=box.querySelector(".houki-answer-feedback");
     const next=box.querySelector(".houki-next-question");
     const graded=!!exam.graded;
@@ -168,9 +171,22 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     const next=exam.pos+1;
     if(next>=12){
       const entry=exam.entry,score=tally(entry.prefix);
-      exam=null;document.body.classList.remove("houki-fixed-exam");updateAnswerPanel();
+      exam=null;finishedEntry=entry;
+      document.body.classList.remove("houki-fixed-exam");
+      const box=document.getElementById("houkiSessionAnswer");
+      if(box){
+        box.hidden=false;
+        box.querySelector(".houki-answer-title").textContent=entry.label+" の演習結果";
+        box.querySelector(".houki-answer-hint").textContent="12問中の現在の記録です。";
+        box.querySelector(".houki-number-buttons").style.display="none";
+        box.querySelector(".houki-answer-feedback").textContent=
+          "正解 "+score.correct+"/12問 ("+Math.round(score.correct/12*100)+"%) · 回答済 "+score.answered+"/12問";
+        const btn=box.querySelector(".houki-next-question");
+        btn.hidden=false;btn.textContent="試験回一覧に戻る";
+        box.scrollIntoView({block:"start",behavior:"smooth"});
+      }
       const notice=document.getElementById("houkiSessionNotice");
-      if(notice)notice.textContent=entry.label+" の出題終了。記録 "+score.answered+"/12問、正解 "+score.correct+"/12問。未回答があればカードから再開できます。";
+      if(notice)notice.textContent=entry.label+" の出題終了。正解 "+score.correct+"/12問。未回答があればカードから再開できます。";
       refresh();return;
     }
     showPosition(next);
@@ -189,7 +205,7 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     document.querySelectorAll(".fc,.ft").forEach(el=>setChecked(el,true));
   }
   function start(entry){
-    exam=null;
+    exam=null;finishedEntry=null;
     const term=document.getElementById("fterm");
     const a=document.getElementById("fslotA");
     const b=document.getElementById("fslotB");
@@ -284,7 +300,14 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
       btn.addEventListener("click",()=>answer(n));
       answerBox.querySelector(".houki-number-buttons").append(btn);
     }
-    answerBox.querySelector(".houki-next-question").addEventListener("click",nextInExam);
+    answerBox.querySelector(".houki-next-question").addEventListener("click",()=>{
+      if(exam){nextInExam();return}
+      if(finishedEntry){
+        quitFixedMode();
+        const cards=document.getElementById("houkiSessionCards");
+        if(cards)cards.scrollIntoView({block:"start",behavior:"smooth"});
+      }
+    });
     // Place controls after all source options, never inside long choice text.
     const question=document.getElementById("qtext");
     if(question&&question.parentNode)question.insertAdjacentElement("afterend",answerBox);
