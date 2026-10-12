@@ -140,6 +140,9 @@ jobs:
               panel.querySelector(".houki-next-question").click();
               ok(panel.hidden,"returns to session list");
               ok(!document.body.classList.contains("houki-fixed-exam"),"standard quiz restored");
+              const longest=ITEMS.find(it=>it.id===maxId);
+              if(longest)show(longest);
+              ok(document.documentElement.scrollWidth<=innerWidth+4,"horizontal page overflow for longest choice: "+document.documentElement.scrollWidth+" > "+innerWidth);
               msg="PASS: cards=18 items=216; grade/persist/ordered-next/final-score/navigation; optionless="+optionless+
                 "; longest-choice="+maxChoice+" chars ("+maxId+"); viewport="+innerWidth+
                 "; scrollWidth="+document.documentElement.scrollWidth;
@@ -167,5 +170,18 @@ jobs:
           assert m, "Browser did not execute smoke test"
           report=html.unescape(m.group(1))
           print(report)
+          assert report.startswith("PASS:"),report
+          PY
+          # Chrome has a minimum outer-window width around 500px; use a
+          # device pixel ratio of 2 to exercise a narrower CSS viewport.
+          google-chrome --headless --no-sandbox --disable-gpu --disable-dev-shm-usage             --force-device-scale-factor=2 --window-size=750,1600             --virtual-time-budget=5000 --dump-dom             http://127.0.0.1:8373/ >/tmp/houki-smoke-mobile.html 2>/tmp/houki-chrome-mobile-errors.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,html
+          t=Path("/tmp/houki-smoke-mobile.html").read_text(encoding="utf-8")
+          m=re.search(r'<pre id="houki-ci-result">(.*?)</pre>',t,re.S)
+          assert m,"Mobile browser did not complete smoke test"
+          report=html.unescape(m.group(1))
+          print("Mobile:",report)
           assert report.startswith("PASS:"),report
           PY
