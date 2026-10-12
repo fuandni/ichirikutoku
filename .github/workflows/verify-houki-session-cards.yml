@@ -79,6 +79,12 @@ jobs:
           PY
 
 
+      - name: Verify exam state merge and backend code
+        run: |
+          set -euo pipefail
+          python3 -m py_compile server/app.py tests/test_houki_exam_v1.py
+          python3 tests/test_houki_exam_v1.py
+
       - name: Headless-browser answer and layout checks
         run: |
           set -euo pipefail
@@ -122,7 +128,7 @@ jobs:
               keys[wrong-1].click();
               ok(rec["JY50A-01"]==="x","wrong self-mark and native rec persisted");
               ok(cur.id==="JY50A-01","feedback shown before advancing");
-              ok(keys.every(b=>b.disabled),"buttons disabled after grade");
+              ok(keys.every(b=>!b.disabled),"answers editable before finishing");
               ok(panel.querySelector(".houki-answer-feedback").textContent.includes("不正解"),"visible feedback");
               panel.querySelector(".houki-next-question").click();
               ok(cur.id==="JY50A-02","next question follows exactly");
@@ -135,11 +141,12 @@ jobs:
               }
               panel.querySelector(".houki-next-question").click();
               ok(document.querySelector(".houki-answer-title").textContent.includes("演習結果"),"end-of-session score screen");
-              ok(panel.querySelector(".houki-answer-feedback").textContent.includes("正解 11/12"),"score 11/12");
+              ok(panel.querySelector(".houki-answer-hint").textContent.includes("正解 11/12"),"score 11/12");
               ok(cards[0].querySelector(".houki-exam-progress").textContent.includes("正解 11"),"card tally matches");
               panel.querySelector(".houki-next-question").click();
               ok(panel.hidden,"returns to session list");
               ok(!document.body.classList.contains("houki-fixed-exam"),"standard quiz restored");
+              ok(document.querySelector("#houkiExamRecent").textContent.includes("令和5年10月"),"session history stored");
               const longest=ITEMS.find(it=>it.id===maxId);
               if(longest)show(longest);
               ok(document.documentElement.scrollWidth<=innerWidth+4,"horizontal page overflow for longest choice: "+document.documentElement.scrollWidth+" > "+innerWidth);
