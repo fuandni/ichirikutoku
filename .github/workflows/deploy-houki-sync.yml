@@ -8,6 +8,7 @@ on:
       - "server/app.py"
       - "scripts/patch_houki_sync.py"
       - "scripts/patch_houki_session_cards.py"
+      - "scripts/patch_home_law_exam_link.py"
       - "tests/test_houki_exam_v1.py"
       - ".github/workflows/deploy-houki-sync.yml"
   workflow_dispatch:
@@ -30,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile server/app.py scripts/patch_houki_sync.py scripts/patch_houki_session_cards.py tests/test_houki_exam_v1.py
+          python3 -m py_compile server/app.py scripts/patch_houki_sync.py scripts/patch_houki_session_cards.py scripts/patch_home_law_exam_link.py tests/test_houki_exam_v1.py
           python3 tests/test_houki_exam_v1.py
           rm -rf /tmp/houki-check
           mkdir -p /tmp/houki-check
@@ -76,6 +77,7 @@ jobs:
           scp -i ~/.ssh/id_ed25519 server/app.py "opc@${OCI_HOST}:/home/opc/app.py.houki-upload"
           scp -i ~/.ssh/id_ed25519 scripts/patch_houki_sync.py "opc@${OCI_HOST}:/home/opc/patch_houki_sync.py"
           scp -i ~/.ssh/id_ed25519 scripts/patch_houki_session_cards.py "opc@${OCI_HOST}:/home/opc/patch_houki_session_cards.py"
+          scp -i ~/.ssh/id_ed25519 scripts/patch_home_law_exam_link.py "opc@${OCI_HOST}:/home/opc/patch_home_law_exam_link.py"
 
       - name: Install and verify on server
         shell: bash
@@ -87,6 +89,7 @@ jobs:
           TS="$(date +%Y%m%d-%H%M%S)"
           sudo cp -a /opt/ichirikutoku/backend/app.py "/opt/ichirikutoku/backend/app.py.bak-${TS}"
           sudo cp -a /var/www/ichirikutoku/houki-practice/index.html "/var/www/ichirikutoku/houki-practice/index.html.bak-${TS}"
+          sudo cp -a /var/www/ichirikutoku/home/index.html "/var/www/ichirikutoku/home/index.html.bak-${TS}"
           if [ -f /opt/ichirikutoku/data/progress.db ]; then
             sudo cp -a /opt/ichirikutoku/data/progress.db "/opt/ichirikutoku/data/progress.db.bak-${TS}"
           fi
@@ -99,11 +102,13 @@ jobs:
           sudo install -o ichirikutoku -g ichirikutoku -m 0644 /home/opc/app.py.houki-upload /opt/ichirikutoku/backend/app.py
           sudo python3 /home/opc/patch_houki_sync.py /var/www/ichirikutoku/houki-practice/index.html
           sudo python3 /home/opc/patch_houki_session_cards.py /var/www/ichirikutoku/houki-practice/index.html
+          sudo python3 /home/opc/patch_home_law_exam_link.py /var/www/ichirikutoku/home/index.html
 
           sudo systemctl restart ichirikutoku
           sudo systemctl is-active --quiet ichirikutoku
           grep -q "HOUKI_CLOUD_SYNC_V1" /var/www/ichirikutoku/houki-practice/index.html
           grep -q "HOUKI_SESSION_CARDS_V1" /var/www/ichirikutoku/houki-practice/index.html
+          grep -q 'id="law-yearly-exam-card"' /var/www/ichirikutoku/home/index.html
 
           curl --fail --silent --retry 10 --retry-delay 1 --retry-connrefused http://127.0.0.1:8000/health >/dev/null
           test "$(curl --silent --retry 5 --retry-delay 1 --retry-connrefused --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/houki/state)" = "401"
@@ -129,6 +134,9 @@ jobs:
           curl --fail --show-error --silent "https://${OCI_HOST}/houki-practice/index.html" -o /tmp/houki-live.html
           grep -q "HOUKI_CLOUD_SYNC_V1" /tmp/houki-live.html
           grep -q "HOUKI_SESSION_CARDS_V1" /tmp/houki-live.html
+          curl --fail --show-error --silent "https://${OCI_HOST}/home/index.html" -o /tmp/home-live.html
+          grep -q 'id="law-yearly-exam-card"' /tmp/home-live.html
+          grep -q 'href="/houki-practice/#houkiSessionCards"' /tmp/home-live.html
           CODE="$(curl --silent --output /dev/null --write-out '%{http_code}' "https://${OCI_HOST}/api/houki/state")"
           test "$CODE" = "401"
           echo "Public law sync verification OK"
