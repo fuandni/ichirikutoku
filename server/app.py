@@ -215,6 +215,71 @@ def merge_exam_v1(server: Any, client: Any) -> Dict[str, Any]:
     })
 
 
+
+def normalize_houki_exam_v1(value: Any) -> Dict[str, Any]:
+    """Keep bounded law-exam attempts alongside the existing per-question rec data."""
+    obj = safe_json_obj(value, {})
+    raw = obj.get('attempts') if isinstance(obj.get('attempts'), dict) else {}
+    items = []
+    for key, a in raw.items():
+        if not isinstance(key, str) or len(key) > 100 or not isinstance(a, dict):
+            continue
+        prefix = a.get('prefix')
+        ids = a.get('ids')
+        if not isinstance(prefix, str) or not isinstance(ids, list) or len(ids) != 12:
+            continue
+        if not all(isinstance(x, str) and x.startswith(prefix) and len(x) < 80 for x in ids):
+            continue
+        saved = _int(a.get('savedAt'), 0)
+        if saved < 0:
+            continue
+        answers = a.get('answers') if isinstance(a.get('answers'), dict) else {}
+        clean = {}
+        for question_id in ids:
+            r = answers.get(question_id)
+            if not isinstance(r, dict):
+                continue
+            choice = _int(r.get('choice'), 0)
+            if choice not in (1, 2, 3, 4):
+                continue
+            clean[question_id] = {
+                'choice': choice,
+                'correct': bool(r.get('correct', False)),
+                'time': max(0, _int(r.get('time'), 0)),
+            }
+        item = dict(a)
+        item.update(id=key, prefix=prefix, ids=ids, answers=clean,
+                    savedAt=saved, position=max(0, min(11, _int(a.get('position'), 0))))
+        items.append(item)
+    items.sort(key=lambda x: _int(x.get('savedAt'), 0), reverse=True)
+    items = items[:100]
+    attempts = {a['id']: a for a in items}
+    last = obj.get('lastId') if isinstance(obj.get('lastId'), str) else ''
+    return {'version': 1, 'attempts': attempts,
+            'lastId': last if last in attempts else (items[0]['id'] if items else ''),
+            'updatedAt': max(0, _int(obj.get('updatedAt'), 0))}
+
+
+def merge_houki_exam_v1(server: Any, client: Any) -> Dict[str, Any]:
+    """Merge attempts by id and newest edit; old clients without examV1 keep server history."""
+    a = normalize_houki_exam_v1(server)
+    b = normalize_houki_exam_v1(client)
+    merged = dict(a['attempts'])
+    for key, attempt in b['attempts'].items():
+        if key not in merged or _int(attempt.get('savedAt'), 0) > _int(merged[key].get('savedAt'), 0):
+            merged[key] = attempt
+    ordered = sorted(merged.values(), key=lambda x: _int(x.get('savedAt'), 0), reverse=True)[:100]
+    attempts = {x['id']: x for x in ordered}
+    recent = b if b['updatedAt'] > a['updatedAt'] else a
+    last = recent['lastId']
+    return {
+        'version': 1,
+        'attempts': attempts,
+        'lastId': last if last in attempts else (ordered[0]['id'] if ordered else ''),
+        'updatedAt': max(a['updatedAt'], b['updatedAt']),
+    }
+
+
 def normalize_houki(value: Any) -> Dict[str, Any]:
     obj = safe_json_obj(value, {})
     raw_rec = obj.get('rec') if isinstance(obj.get('rec'), dict) else {}
