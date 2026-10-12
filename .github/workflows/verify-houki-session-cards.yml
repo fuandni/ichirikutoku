@@ -60,3 +60,20 @@ jobs:
               if m:
                   print(re.sub(r'\s+',' ',s[m.start():m.start()+800])[:800])
           PY
+
+
+      - name: Investigate question layout and answer data
+        run: |
+          PAGE=/tmp/ichiriku-houki/ichirikutoku_unified/houki-practice/index.html
+          PAGE="$PAGE" python3 - <<'PY'
+          import os,re,html
+          from pathlib import Path
+          s=Path(os.environ["PAGE"]).read_text(encoding="utf-8")
+          for pat in [r'function\s+show\s*\(',r'function\s+paint\s*\(',r'function\s+pool\s*\(',r'function\s+renderTable\s*\(',r'function\s+refreshPool\s*\(',r'let\s+rec=',r'id="sheet"',r'id="ans"',r'id="reveal"',r'id="mkok"',r'id="mkng"',r'id="next"',r'id="skip"',r'id="fterm"',r'class="fc"',r'class="ft"']:
+              m=re.search(pat,s)
+              print("PAT",pat,"FOUND",bool(m))
+              if m:print(re.sub(r'\s+',' ',s[max(0,m.start()-170):m.start()+2200])[:2300])
+          for pat in [r'const\s+ITEMS\s*=',r'var\s+ITEMS\s*=',r'let\s+ITEMS\s*=']:
+              m=re.search(pat,s)
+              if m:print("ITEMS DEF",re.sub(r'\s+',' ',s[m.start():m.start()+2400])[:2400])
+          PY
