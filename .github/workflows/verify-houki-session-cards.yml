@@ -54,9 +54,9 @@ jobs:
           s=Path(os.environ["PAGE"]).read_text(encoding="utf-8")
           print("Source size",len(s))
           print("Native question-ID literals",len(set(re.findall(r'JY\d{2}[AB]-\d{2}',s))))
-          for pattern in [r'function\s+mark\s*\(',r'(?:let|const|var)\s+rec\s*=',r'function\s+pick\s*\(',r'function\s+next\w*\s*\(',r'const\s+STORE_KEY',r'function\s+render\w*\s*\(']:
+          for pattern in [r'function\s+mark\s*\(',r'function\s+draw\s*\(',r'function\s+choose\w*\s*\(',r'function\s+next\w*\s*\(',r'function\s+select\w*\s*\(',r'function\s+applyFilters\s*\(',r'\$\("fterm"\)',r'\$\("fslotA"\)',r'\$\("unseen"\)',r'\$\("tbody"\)\.addEventListener',r'\$\("next"\)\.addEventListener']:
               m=re.search(pattern,s)
               print("PATTERN",pattern,"MATCH",bool(m))
               if m:
-                  print(re.sub(r'\s+',' ',s[m.start():m.start()+400])[:400])
+                  print(re.sub(r'\s+',' ',s[m.start():m.start()+800])[:800])
           PY
