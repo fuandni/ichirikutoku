@@ -77,3 +77,95 @@ jobs:
               m=re.search(pat,s)
               if m:print("ITEMS DEF",re.sub(r'\s+',' ',s[m.start():m.start()+2400])[:2400])
           PY
+
+
+      - name: Headless-browser answer and layout checks
+        run: |
+          set -euo pipefail
+          command -v google-chrome
+          PAGE=/tmp/ichiriku-houki/ichirikutoku_unified/houki-practice/index.html
+          PAGE="$PAGE" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p=Path(os.environ['PAGE'])
+          s=p.read_text(encoding="utf-8")
+          test=r"""
+          <script>
+          window.addEventListener('load',()=>setTimeout(()=>{
+            let msg="";
+            function ok(c,m){if(!c)throw Error(m)}
+            try{
+              const cards=[...document.querySelectorAll('#houkiSessionCards .houki-exam-card')];
+              ok(cards.length===18,"18 cards present");
+              let maxChoice=0, maxId="",optionless=0,answerErrors=0;
+              for(const it of ITEMS){
+                const d=QT[it.file][it.n];
+                if(!d||!d.t){answerErrors++;continue}
+                if(!Number.isInteger(it.a)||it.a<1||it.a>4)answerErrors++;
+                if(d.o&&d.o.length===4){
+                  const lines=d.t.split("\n"),ends=[d.o[1],d.o[2],d.o[3],lines.length];
+                  for(let k=0;k<4;k++){
+                    const L=lines.slice(d.o[k],ends[k]).join("").length;
+                    if(L>maxChoice){maxChoice=L;maxId=it.id}
+                  }
+                }else optionless++;
+              }
+              ok(ITEMS.length===216,"216 law items");
+              ok(answerErrors===0,"all answers and question texts valid");
+              cards[0].click();
+              ok(cur.id==="JY50A-01","first question in original order: "+cur.id);
+              const panel=document.getElementById("houkiSessionAnswer");
+              ok(panel&&!panel.hidden,"numeric-choice panel visible");
+              const keys=[...panel.querySelectorAll(".houki-number-buttons button")];
+              ok(keys.length===4,"4 numeric answer keys");
+              const wrong=cur.a===1?2:1;
+              keys[wrong-1].click();
+              ok(rec["JY50A-01"]==="x","wrong self-mark and native rec persisted");
+              ok(cur.id==="JY50A-01","feedback shown before advancing");
+              ok(keys.every(b=>b.disabled),"buttons disabled after grade");
+              ok(panel.querySelector(".houki-answer-feedback").textContent.includes("不正解"),"visible feedback");
+              panel.querySelector(".houki-next-question").click();
+              ok(cur.id==="JY50A-02","next question follows exactly");
+              keys[cur.a-1].click();
+              ok(rec["JY50A-02"]==="o","correct self-mark");
+              for(let i=2;i<12;i++){
+                panel.querySelector(".houki-next-question").click();
+                ok(cur.id==="JY50A-"+String(i+1).padStart(2,"0"),"question order "+i);
+                keys[cur.a-1].click();
+              }
+              panel.querySelector(".houki-next-question").click();
+              ok(document.querySelector(".houki-answer-title").textContent.includes("演習結果"),"end-of-session score screen");
+              ok(panel.querySelector(".houki-answer-feedback").textContent.includes("正解 11/12"),"score 11/12");
+              ok(cards[0].querySelector(".houki-exam-progress").textContent.includes("正解 11"),"card tally matches");
+              panel.querySelector(".houki-next-question").click();
+              ok(panel.hidden,"returns to session list");
+              ok(!document.body.classList.contains("houki-fixed-exam"),"standard quiz restored");
+              msg="PASS: cards=18 items=216; grade/persist/ordered-next/final-score/navigation; optionless="+optionless+
+                "; longest-choice="+maxChoice+" chars ("+maxId+"); viewport="+innerWidth+
+                "; scrollWidth="+document.documentElement.scrollWidth;
+            }catch(e){msg="FAIL: "+e.message}
+            const node=document.createElement("pre");
+            node.id="houki-ci-result";node.textContent=msg;document.body.append(node);
+          },350));
+          </script>
+          """
+          p.write_text(s.replace('</body>',test+'</body>'),encoding='utf-8')
+          PY
+          cd /tmp/ichiriku-houki/ichirikutoku_unified/houki-practice
+          python3 -m http.server 8373 --bind 127.0.0.1 >/tmp/houki-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true' EXIT
+          sleep 1
+          google-chrome --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --window-size=390,1000 --virtual-time-budget=5000 \
+            --dump-dom http://127.0.0.1:8373/ >/tmp/houki-smoke-result.html 2>/tmp/houki-chrome-errors.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,html
+          t=Path("/tmp/houki-smoke-result.html").read_text(encoding="utf-8")
+          m=re.search(r'<pre id="houki-ci-result">(.*?)</pre>',t,re.S)
+          assert m, "Browser did not execute smoke test"
+          report=html.unescape(m.group(1))
+          print(report)
+          assert report.startswith("PASS:"),report
+          PY
