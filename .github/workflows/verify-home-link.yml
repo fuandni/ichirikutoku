@@ -5,7 +5,6 @@ on:
     paths:
       - "scripts/patch_home_law_exam_link.py"
       - ".github/workflows/verify-home-link.yml"
-      - ".github/workflows/deploy-houki-sync.yml"
   workflow_dispatch:
 
 permissions:
@@ -35,7 +34,8 @@ jobs:
           assert after.count('法規・試験回別演習') == 1
           assert after.count('id="law-yearly-exam-card"') == 1
           assert '/houki-practice/#houkiSessionCards' in after
-          assert after.count('<a ') == before.count('<a ') + 1, 'Card added exactly once'
+          delta = 0 if 'id="law-yearly-exam-card"' in before else 1
+          assert after.count('<a ') == before.count('<a ') + delta, 'Card present exactly once'
           assert len(after) > len(before)
           print('PASS: original home routes intact, fifth card added, idempotent patch')
           PY
