@@ -223,3 +223,10 @@ jobs:
           print("Mobile:",report)
           assert report.startswith("PASS:"),report
           PY
+
+      - name: Upload law exam standalone preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: houki-12-question-exam-preview
+          path: /tmp/ichiriku-houki/ichirikutoku_unified/houki-practice/index.html
+          if-no-files-found: error
