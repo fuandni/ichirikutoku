@@ -1,0 +1,45 @@
+name: Verify law exam-session cards
+
+on:
+  pull_request:
+    paths:
+      - "scripts/patch_houki_session_cards.py"
+      - ".github/workflows/verify-houki-session-cards.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack existing law app
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ichiriku-houki
+          unzip -q ichirikutoku_oci_unified_no198_patched.zip -d /tmp/ichiriku-houki
+          test -s /tmp/ichiriku-houki/ichirikutoku_unified/houki-practice/index.html
+
+      - name: Patch twice and verify original controls and JavaScript
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/patch_houki_session_cards.py
+          PAGE=/tmp/ichiriku-houki/ichirikutoku_unified/houki-practice/index.html
+          python3 scripts/patch_houki_session_cards.py "$PAGE"
+          python3 scripts/patch_houki_session_cards.py "$PAGE"
+          PAGE="$PAGE" python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+          html=Path(os.environ["PAGE"]).read_text(encoding="utf-8")
+          assert html.count("/* HOUKI_SESSION_CARDS_V1 */")==2, "patch was applied twice"
+          for control in ('id="fterm"','id="fslotA"','id="fslotB"'):
+              assert control in html, f"original control missing: {control}"
+          matches=re.findall(r'<script>\s*/\* HOUKI_SESSION_CARDS_V1 \*/(.*?)</script>',html,re.S)
+          assert len(matches)==1, "injected script missing"
+          Path("/tmp/houki-exam-cards.js").write_text(matches[0],encoding="utf-8")
+          print("Law page patched; original form controls are preserved.")
+          PY
+          node --check /tmp/houki-exam-cards.js
