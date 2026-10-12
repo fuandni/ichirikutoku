@@ -148,6 +148,73 @@ def _int(value: Any, default: int = 0) -> int:
         return default
 
 
+def normalize_exam_v1(value: Any) -> Dict[str, Any]:
+    """Bounded law exam session state, separate from legacy rec progress."""
+    raw = safe_json_obj(value, {})
+    attempts = raw.get('attempts') if isinstance(raw.get('attempts'), dict) else {}
+    out = {}
+    for attempt_id, attempt in list(attempts.items())[-120:]:
+        if not isinstance(attempt_id, str) or len(attempt_id) > 96:
+            continue
+        if not isinstance(attempt, dict):
+            continue
+        prefix = attempt.get('prefix')
+        ids = attempt.get('ids')
+        if not isinstance(prefix, str) or not prefix.startswith('JY') or len(prefix) > 12:
+            continue
+        if not isinstance(ids, list) or len(ids) != 12:
+            continue
+        if any(not isinstance(q, str) or len(q) > 20 for q in ids):
+            continue
+        saved_at = max(0, _int(attempt.get('savedAt'), 0))
+        raw_answers = attempt.get('answers') if isinstance(attempt.get('answers'), dict) else {}
+        answers = {}
+        for q in ids:
+            entry = raw_answers.get(q)
+            if not isinstance(entry, dict):
+                continue
+            n = _int(entry.get('choice'), 0)
+            if n not in (1, 2, 3, 4):
+                continue
+            answers[q] = {
+                'choice': n, 'correct': bool(entry.get('correct')),
+                'time': max(0, _int(entry.get('time'), 0))
+            }
+        status = 'completed' if attempt.get('status') == 'completed' else 'active'
+        out[attempt_id] = {
+            'id': attempt_id, 'prefix': prefix,
+            'label': str(attempt.get('label') or '')[:96],
+            'ids': ids, 'started': max(0, _int(attempt.get('started'), 0)),
+            'savedAt': saved_at,
+            'finished': max(0, _int(attempt.get('finished'), 0)),
+            'position': min(max(_int(attempt.get('position'), 0), 0), 11),
+            'answers': answers, 'status': status
+        }
+    ordered = sorted(out.values(), key=lambda a: a['savedAt'], reverse=True)[:100]
+    kept = {a['id']: a for a in ordered}
+    last_id = str(raw.get('lastId') or '')[:96]
+    return {
+        'version': 1, 'attempts': kept,
+        'lastId': last_id if last_id in kept else (ordered[0]['id'] if ordered else ''),
+        'updatedAt': max(0, _int(raw.get('updatedAt'), 0))
+    }
+
+
+def merge_exam_v1(server: Any, client: Any) -> Dict[str, Any]:
+    s = normalize_exam_v1(server)
+    c = normalize_exam_v1(client)
+    attempts = dict(s['attempts'])
+    for key, val in c['attempts'].items():
+        if key not in attempts or val['savedAt'] > attempts[key]['savedAt']:
+            attempts[key] = val
+    newer = c if c['updatedAt'] > s['updatedAt'] else s
+    return normalize_exam_v1({
+        'version': 1, 'attempts': attempts,
+        'lastId': newer['lastId'],
+        'updatedAt': max(c['updatedAt'], s['updatedAt'])
+    })
+
+
 def normalize_houki(value: Any) -> Dict[str, Any]:
     obj = safe_json_obj(value, {})
     raw_rec = obj.get('rec') if isinstance(obj.get('rec'), dict) else {}
@@ -168,6 +235,7 @@ def normalize_houki(value: Any) -> Dict[str, Any]:
         'ui': ui,
         'fs': obj.get('fs'),
         'exportedAt': obj.get('exportedAt'),
+        'examV1': normalize_exam_v1(obj.get('examV1')),
         '_sync': {
             'recAt': rec_at,
             'resetAt': _int(sync.get('resetAt'), 0),
@@ -231,6 +299,7 @@ def merge_houki(server: Any, client: Any, server_updated: int, client_updated: i
         'ui': newer.get('ui') if isinstance(newer.get('ui'), dict) else {},
         'fs': newer.get('fs'),
         'exportedAt': newer.get('exportedAt'),
+        'examV1': merge_exam_v1(s.get('examV1'), c.get('examV1')),
         '_sync': {
             'recAt': merged_at,
             'resetAt': max(s_reset, c_reset),
