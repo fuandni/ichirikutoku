@@ -25,6 +25,28 @@ addition = r"""
 <style>
 /* HOUKI_SESSION_CARDS_V1 */
 
+
+#houkiSessionAnswer .houki-progress-label{font-size:14px;color:#334155;font-weight:700}
+#houkiSessionAnswer .houki-jumps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin:14px 0}
+#houkiSessionAnswer .houki-jumps[hidden]{display:none}
+#houkiSessionAnswer .houki-jumps button{min-width:0;min-height:38px;border:1px solid #b8c3d6;border-radius:7px;background:#fff;color:#111827;font:700 15px system-ui,sans-serif}
+#houkiSessionAnswer .houki-jumps button.current{outline:2px solid #2457d6}
+#houkiSessionAnswer .houki-jumps button.correct{background:#dbf6e5}
+#houkiSessionAnswer .houki-jumps button.wrong{background:#ffe3e0}
+#houkiSessionAnswer .houki-bottom-nav{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#houkiSessionAnswer .houki-prev-question{width:100%;min-height:48px;border:1px solid #94a3b8;background:#fff;color:#1e293b;border-radius:9px;font:700 16px system-ui,sans-serif}
+#houkiSessionAnswer .houki-finish-question{display:block;width:100%;margin:10px 0 0;min-height:42px;border:1px solid #94a3b8;background:#fff;color:#334155;border-radius:8px;font:700 15px system-ui,sans-serif}
+#houkiSessionAnswer .houki-finish-question[hidden],#houkiSessionAnswer .houki-prev-question[hidden]{display:none}
+#houkiSessionAnswer .houki-next-question{margin:0}
+#houkiSessionAnswer .houki-result-rows[hidden],#houkiSessionAnswer .houki-export[hidden]{display:none}
+#houkiSessionAnswer .houki-result-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:9px 0}
+#houkiSessionAnswer .houki-result-grid button{min-height:44px;border-radius:8px;border:1px solid #9ca3af;background:#fff;font:700 14px system-ui,sans-serif}
+#houkiSessionAnswer .houki-result-grid button.correct{background:#dcfce7}
+#houkiSessionAnswer .houki-result-grid button.wrong{background:#fee2e2}
+#houkiSessionAnswer .houki-export{width:100%;max-width:100%;min-width:0;font-size:13px;line-height:1.55;margin-top:8px}
+#houkiExamRecent{display:grid;gap:7px}
+#houkiSessionCards .houki-recent-row{width:100%;text-align:left;border:1px solid #cbd5e1;border-radius:8px;padding:11px;background:#fff;color:#1e293b;font:600 13px system-ui,sans-serif}
+
 /* Exam-session answer area: text choices remain in the original qtext view. */
 #houkiSessionAnswer{margin:16px 0 20px;padding:13px;background:#fff;border:1px solid #d7dee9;border-radius:12px;max-width:100%;min-width:0}
 #houkiSessionAnswer .houki-answer-title{font-weight:800;font-size:16px;margin:0 0 8px}
@@ -88,169 +110,273 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
   const entryList=sessions.flatMap(s=>["A","B"].map(slot=>({
     label:s.label+" "+slot,term:s.label+"期",slot:slot,prefix:"JY"+s.p+slot+"-"
   })));
-  let activePrefix="",exam=null,finishedEntry=null;
+  const EXAM_KEY="rikutoku1-hoki-session-v1";
+  function safeObject(x){return x&&typeof x==="object"&&!Array.isArray(x)?x:{}}
+  function loadDb(){try{return safeObject(JSON.parse(localStorage.getItem(EXAM_KEY)||"{}"))}catch(e){return {}}}
+  function normalizeDb(raw){
+    raw=safeObject(raw);
+    const entries=Object.entries(safeObject(raw.attempts)).filter(([id,a])=>id.length<100&&a&&
+       typeof a==="object"&&typeof a.prefix==="string"&&Array.isArray(a.ids)&&a.ids.length===12);
+    const attempts=Object.fromEntries(entries.slice(-100));
+    return {version:1,attempts,lastId:typeof raw.lastId==="string"?raw.lastId:"",updatedAt:Number(raw.updatedAt)||0};
+  }
+  let examDb=normalizeDb(loadDb()),activePrefix="",exam=null,finishedEntry=null,examReviewMode=false;
+  function saveDbToLocal(){try{localStorage.setItem(EXAM_KEY,JSON.stringify(examDb))}catch(e){}}
+  function mergeExamDb(first,second){
+    const a=normalizeDb(first),b=normalizeDb(second),all={...a.attempts};
+    for(const [id,item] of Object.entries(b.attempts)){
+      if(!all[id]||(Number(item.savedAt)||0)>(Number(all[id].savedAt)||0))all[id]=item;
+    }
+    const selected=b.updatedAt>a.updatedAt?b.lastId:a.lastId;
+    const ordered=Object.values(all).sort((x,y)=>(Number(y.savedAt)||0)-(Number(x.savedAt)||0)).slice(0,100);
+    const attempts=Object.fromEntries(ordered.map(x=>[x.id,x]));
+    return {version:1,attempts,lastId:attempts[selected]?selected:ordered[0]?.id||"",
+      updatedAt:Math.max(a.updatedAt,b.updatedAt)};
+  }
   function records(){try{return typeof rec==="object"&&rec?rec:{}}catch(e){return {}}}
   function tally(prefix){
     const r=records();let answered=0,correct=0,wrong=0;
     for(let q=1;q<=12;q++){
-      const id=prefix+String(q).padStart(2,"0");
-      if(!Object.prototype.hasOwnProperty.call(r,id))continue;
-      if(r[id]==="o"){answered++;correct++}
-      else if(r[id]==="x"){answered++;wrong++}
+      const val=r[prefix+String(q).padStart(2,"0")];
+      if(val==="o"){answered++;correct++}else if(val==="x"){answered++;wrong++}
     }
     return {answered,correct,wrong};
   }
+  function scoreAttempt(a){
+    const vals=Object.values(safeObject(a.answers)).filter(x=>x&&x.choice!=null);
+    const answered=vals.length,correct=vals.filter(x=>x.correct).length;
+    return {answered,correct,wrong:answered-correct,rate:answered?Math.round(correct/answered*100):0};
+  }
+  function activeAttempt(){return exam?.attempt||null}
+  function persistExam(){
+    const a=activeAttempt();
+    if(!a)return;
+    const now=Date.now();a.savedAt=now;a.position=exam.pos;
+    examDb.attempts[a.id]=JSON.parse(JSON.stringify(a));
+    examDb.lastId=a.id;examDb.updatedAt=now;
+    const ordered=Object.values(examDb.attempts).sort((x,y)=>y.savedAt-x.savedAt).slice(0,100);
+    examDb.attempts=Object.fromEntries(ordered.map(x=>[x.id,x]));
+    saveDbToLocal();
+    try{persist()}catch(e){console.warn("Exam sync unavailable",e)}
+    refresh();renderRecent();
+  }
+  function findEntry(prefix){return entryList.find(e=>e.prefix===prefix)||null}
   function clearSelection(){
     document.querySelectorAll("#houkiSessionCards .houki-exam-card").forEach(b=>{
       b.classList.remove("selected");b.setAttribute("aria-pressed","false");
     });
   }
+  function markSelection(prefix){
+    clearSelection();
+    document.querySelectorAll("#houkiSessionCards .houki-exam-card").forEach(b=>{
+      const on=b.dataset.prefix===prefix;
+      b.classList.toggle("selected",on);b.setAttribute("aria-pressed",String(on));
+    });
+  }
   function quitFixedMode(){
     if(!exam&&!finishedEntry)return;
-    exam=null;finishedEntry=null;activePrefix="";document.body.classList.remove("houki-fixed-exam");clearSelection();
-    updateAnswerPanel();
+    exam=null;finishedEntry=null;activePrefix="";examReviewMode=false;
+    document.body.classList.remove("houki-fixed-exam");clearSelection();
+    const panel=document.getElementById("houkiSessionAnswer");
+    if(panel)panel.hidden=true;
     const notice=document.getElementById("houkiSessionNotice");
-    if(notice)notice.textContent="試験回別モードを終了し、通常演習へ戻りました。";
+    if(notice)notice.textContent="試験回別モードを終了しました。";
+    renderRecent();
   }
-  function showPosition(pos){
-    if(!exam)return;
-    const item=ITEMS.find(x=>x.id===exam.ids[pos]);
-    if(!item){quitFixedMode();return}
-    exam.pos=pos;exam.graded=false;finishedEntry=null;
-    document.body.classList.add("houki-fixed-exam");
-    show(item);
-    updateAnswerPanel();
-    scrollQuestionTop();
-    const notice=document.getElementById("houkiSessionNotice");
-    if(notice)notice.textContent=exam.entry.label+"：第"+(pos+1)+"/12問。回答は問題文の下にある1〜4のボタンで選んでください。";
-  }
-  function updateAnswerPanel(choice=null){
+  function updateAnswerPanel(){
     const box=document.getElementById("houkiSessionAnswer");
     if(!box)return;
     box.hidden=!exam;
     if(!exam)return;
     box.querySelector(".houki-number-buttons").style.display="grid";
     box.querySelector(".houki-answer-title").textContent="回答を選択";
-    box.querySelector(".houki-answer-hint").textContent="上の選択肢を読んで、正しい番号を選んでください。";
+    box.querySelector(".houki-answer-hint").textContent="問題文と選択肢を読み、正しい番号を選んでください。";
+    const r=safeObject(exam.attempt.answers[cur.id]);
+    const graded=Number.isInteger(r.choice);
     const feedback=box.querySelector(".houki-answer-feedback");
-    const next=box.querySelector(".houki-next-question");
-    const graded=!!exam.graded;
     box.querySelectorAll(".houki-number-buttons button").forEach(button=>{
       const n=Number(button.dataset.answer);
-      button.disabled=graded;
-      button.classList.toggle("houki-picked-correct",graded&&n===choice&&choice===cur.a);
-      button.classList.toggle("houki-picked-wrong",graded&&n===choice&&choice!==cur.a);
-      button.classList.toggle("houki-right",graded&&n===cur.a&&choice!==cur.a);
+      button.disabled=examReviewMode;
+      button.classList.toggle("houki-picked-correct",graded&&n===r.choice&&r.correct);
+      button.classList.toggle("houki-picked-wrong",graded&&n===r.choice&&!r.correct);
+      button.classList.toggle("houki-right",graded&&n===cur.a&&n!==r.choice);
     });
-    feedback.textContent=graded?(choice===cur.a?"正解です。":"不正解です。")+" 正答は "+cur.a+" 番です。":"";
-    next.hidden=!graded;
-    next.textContent=exam.pos===11?"12問の結果へ":"次の問題へ";
+    feedback.textContent=graded?(r.correct?"正解です。":"不正解です。")+" 正答は "+cur.a+" 番です。":"未回答";
+    const next=box.querySelector(".houki-next-question");
+    next.hidden=false;next.textContent=examReviewMode?"結果に戻る":exam.pos===11?"結果を表示":"次の問題";
+    const prev=box.querySelector(".houki-prev-question");
+    prev.disabled=exam.pos===0;prev.hidden=examReviewMode;
+    const fin=box.querySelector(".houki-finish-question");
+    fin.hidden=examReviewMode;
+    const jump=box.querySelector(".houki-jumps");
+    jump.hidden=examReviewMode;
+    if(!examReviewMode){
+      jump.querySelectorAll("button").forEach((b,i)=>{
+        const saved=exam.attempt.answers[exam.ids[i]];
+        b.className=(i===exam.pos?"current ":"")+(saved?.choice!=null?(saved.correct?"correct":"wrong"):"");
+        b.setAttribute("aria-current",i===exam.pos?"step":"false");
+      });
+    }
+    const subtitle=box.querySelector(".houki-progress-label");
+    subtitle.textContent=exam.entry.label+"　"+(exam.pos+1)+"/12　回答済 "+scoreAttempt(exam.attempt).answered+"/12";
+  }
+  function showPosition(pos){
+    if(!exam||pos<0||pos>=12)return;
+    const item=ITEMS.find(x=>x.id===exam.ids[pos]);
+    if(!item){quitFixedMode();return}
+    exam.pos=pos;
+    document.body.classList.add("houki-fixed-exam");
+    show(item);
+    const r=safeObject(exam.attempt.answers[item.id]);
+    if(r.choice!=null){
+      paint(true);
+      const ans=document.getElementById("ans");
+      if(ans){ans.textContent=cur.a;ans.classList.remove("hidden")}
+    }
+    updateAnswerPanel();
+    if(!examReviewMode)persistExam();
+    scrollQuestionTop();
   }
   function answer(n){
-    if(!exam||exam.graded||![1,2,3,4].includes(n))return;
+    if(!exam||examReviewMode||![1,2,3,4].includes(n))return;
     if(!cur||cur.id!==exam.ids[exam.pos])return;
-    const correct=n===cur.a;
-    rec[cur.id]=correct?"o":"x";
-    const k=review.indexOf(cur.id);
+    const correct=n===cur.a,now=Date.now(),id=cur.id;
+    exam.attempt.answers[id]={choice:n,correct,time:now};
+    // Keep native law progress, review list and existing cloud sync intact.
+    rec[id]=correct?"o":"x";
+    const k=review.indexOf(id);
     if(correct){if(k>=0)review.splice(k,1)}
-    else if(k<0)review.push(cur.id);
-    exam.graded=true;
-    // Native grade path: keep browser storage, cloud sync, review list and statistics.
-    stats();renderTable();revSummary();persist();
+    else if(k<0)review.push(id);
+    stats();renderTable();revSummary();
     paint(true);
     const ans=document.getElementById("ans");
     if(ans){ans.textContent=cur.a;ans.classList.remove("hidden")}
-    document.getElementById("reveal").disabled=true;
-    document.getElementById("mkok").disabled=true;
-    document.getElementById("mkng").disabled=true;
-    updateAnswerPanel(n);
-    refresh();
+    updateAnswerPanel();persistExam();
   }
   function nextInExam(){
     if(!exam)return;
-    const next=exam.pos+1;
-    if(next>=12){
-      const entry=exam.entry,score=tally(entry.prefix);
-      exam=null;finishedEntry=entry;
-      document.body.classList.remove("houki-fixed-exam");
-      const box=document.getElementById("houkiSessionAnswer");
-      if(box){
-        box.hidden=false;
-        box.querySelector(".houki-answer-title").textContent=entry.label+" の演習結果";
-        box.querySelector(".houki-answer-hint").textContent="12問中の現在の記録です。";
-        box.querySelector(".houki-number-buttons").style.display="none";
-        box.querySelector(".houki-answer-feedback").textContent=
-          "正解 "+score.correct+"/12問 ("+Math.round(score.correct/12*100)+"%) · 回答済 "+score.answered+"/12問";
-        const btn=box.querySelector(".houki-next-question");
-        btn.hidden=false;btn.textContent="試験回一覧に戻る";
-        box.scrollIntoView({block:"start",behavior:"smooth"});
-      }
-      const notice=document.getElementById("houkiSessionNotice");
-      if(notice)notice.textContent=entry.label+" の出題終了。正解 "+score.correct+"/12問。未回答があればカードから再開できます。";
-      refresh();return;
-    }
-    showPosition(next);
+    if(examReviewMode){showResult(exam.attempt);return}
+    if(exam.pos>=11){finishExam(false);return}
+    showPosition(exam.pos+1);
   }
-  function signal(el){el.dispatchEvent(new Event("change",{bubbles:true}))}
-  function setChecked(el,val){
-    if(!el||el.checked===val)return;
-    el.checked=val;signal(el);
-  }
-  function resetFilters(){
-    const topic=document.getElementById("tgroup");
-    if(topic&&topic.tagName==="SELECT"&&topic.selectedIndex!==0){
-      topic.selectedIndex=0;signal(topic);
-    }
-    // These are the native law app's actual category and frequency controls.
-    document.querySelectorAll(".fc,.ft").forEach(el=>setChecked(el,true));
-  }
-  function start(entry){
-    exam=null;finishedEntry=null;
+  function start(entry, saved=null){
     const term=document.getElementById("fterm");
-    const a=document.getElementById("fslotA");
-    const b=document.getElementById("fslotB");
+    const a=document.getElementById("fslotA"),b=document.getElementById("fslotB");
     const notice=document.getElementById("houkiSessionNotice");
-    if(!term||!a||!b){
-      notice.textContent="試験回フィルターが見つかりません。既存の演習画面から選んでください。";
-      return;
-    }
-    const opt=Array.from(term.options).find(o=>o.textContent.trim()===entry.term);
-    if(!opt){notice.textContent=entry.term+" はこの問題集に登録されていません。";return}
-    resetFilters();
-    term.value=opt.value;signal(term);
-    setChecked(a,entry.slot==="A");setChecked(b,entry.slot==="B");
-    const unseen=document.querySelector('input[name="mode"][value="unseen"]');
-    if(unseen&&!unseen.checked){unseen.checked=true;signal(unseen)}
-    activePrefix=entry.prefix;
-    clearSelection();
-    document.querySelectorAll("#houkiSessionCards .houki-exam-card").forEach(button=>{
-      if(button.dataset.prefix===activePrefix){
-        button.classList.add("selected");button.setAttribute("aria-pressed","true");
-      }
-    });
-    // Use the existing question data and renderer. Avoid random repeats inside a set.
+    if(!term||!a||!b)return;
+    const option=Array.from(term.options).find(o=>o.textContent.trim()===entry.term);
+    if(!option){notice.textContent=entry.term+" が見つかりません。";return}
     const ids=Array.from({length:12},(_,i)=>entry.prefix+String(i+1).padStart(2,"0"));
-    if(typeof ITEMS==="undefined"||typeof show!=="function"||
-       ids.some(id=>!ITEMS.some(item=>item.id===id))){
-      notice.textContent="12問のデータを確認できません。元の法規演習から出題してください。";
-      return;
-    }
-    const r=records();
-    const firstMissing=ids.findIndex(id=>r[id]!=="o"&&r[id]!=="x");
-    exam={entry,ids,pos:-1};
-    showPosition(firstMissing>=0?firstMissing:0);
-    refresh();
+    if(ids.some(id=>!ITEMS.some(item=>item.id===id))){notice.textContent="問題が12問揃っていません。";return}
+    exam=null;finishedEntry=null;examReviewMode=false;
+    document.querySelectorAll(".fc,.ft").forEach(el=>{el.checked=true});
+    const group=document.getElementById("tgroup");if(group){group.selectedIndex=0}
+    term.value=option.value;a.checked=entry.slot==="A";b.checked=entry.slot==="B";
+    const unseen=document.querySelector('input[name="mode"][value="unseen"]');
+    if(unseen)unseen.checked=true;
+    term.dispatchEvent(new Event("change",{bubbles:true}));
+    a.dispatchEvent(new Event("change",{bubbles:true}));
+    b.dispatchEvent(new Event("change",{bubbles:true}));
+    const attempt=saved||{
+      id:"L"+Date.now()+"-"+Math.floor(Math.random()*100000),
+      prefix:entry.prefix,label:entry.label,ids,
+      started:Date.now(),savedAt:Date.now(),position:0,answers:{},status:"active"
+    };
+    attempt.answers=safeObject(attempt.answers);
+    activePrefix=entry.prefix;
+    exam={entry,ids,pos:0,attempt};
+    markSelection(entry.prefix);
+    notice.textContent=entry.label+" の12問を演習中。前後移動・途中終了・再開ができます。";
+    showPosition(Math.max(0,Math.min(11,Number(attempt.position)||0)));
+  }
+  function showResult(a){
+    if(!a)return;
+    const entry=findEntry(a.prefix)||{label:a.label,prefix:a.prefix};
+    const score=scoreAttempt(a);
+    if(exam){exam=null;examReviewMode=false}
+    finishedEntry=entry;
+    document.body.classList.remove("houki-fixed-exam");
+    const panel=document.getElementById("houkiSessionAnswer");
+    if(!panel)return;
+    panel.hidden=false;
+    panel.querySelector(".houki-answer-title").textContent=a.label+" の演習結果";
+    panel.querySelector(".houki-answer-hint").textContent="回答 "+score.answered+"/12問 · 正解 "+score.correct+"/"+score.answered+" ("+score.rate+"%)";
+    panel.querySelector(".houki-number-buttons").style.display="none";
+    panel.querySelector(".houki-answer-feedback").textContent="各問題の○×を確認できます。";
+    panel.querySelector(".houki-progress-label").textContent="12問の結果";
+    panel.querySelector(".houki-prev-question").hidden=true;
+    panel.querySelector(".houki-finish-question").hidden=true;
+    panel.querySelector(".houki-jumps").hidden=true;
+    const btn=panel.querySelector(".houki-next-question");
+    btn.hidden=false;btn.textContent="試験回一覧へ戻る";
+    const resultRows=panel.querySelector(".houki-result-rows");
+    resultRows.hidden=false;resultRows.replaceChildren();
+    const summary=document.createElement("p");
+    summary.textContent="正解 "+score.correct+"　不正解 "+score.wrong+"　未回答 "+(12-score.answered);
+    resultRows.append(summary);
+    const grid=document.createElement("div");grid.className="houki-result-grid";
+    a.ids.forEach((id,i)=>{
+      const r=a.answers[id]||{},button=document.createElement("button");
+      button.type="button";button.textContent=(i+1)+"問 "+(r.choice==null?"－":r.correct?"○":"×");
+      button.className=r.choice==null?"unanswered":r.correct?"correct":"wrong";
+      button.onclick=()=>{
+        const it=ITEMS.find(x=>x.id===id);
+        if(!it)return;
+        show(it);paint(true);
+        const ans=document.getElementById("ans");
+        if(ans){ans.textContent=cur.a;ans.classList.remove("hidden")}
+        panel.scrollIntoView({block:"start",behavior:"smooth"});
+      };
+      grid.append(button);
+    });
+    resultRows.append(grid);
+    const exportBox=panel.querySelector(".houki-export");
+    const lines=["一陸特 法規 演習結果","範囲: "+a.label,
+      "回答: "+score.answered+"/12","結果: "+score.correct+"/"+score.answered+" ("+score.rate+"%)",""];
+    a.ids.forEach((id,i)=>{
+      const r=a.answers[id]||{},q=ITEMS.find(x=>x.id===id);
+      lines.push("["+id+"] "+(r.choice==null?"未":r.correct?"○":"×")+
+        " | 回答:"+(r.choice??"-")+" | 正答:"+(q?.a??"-")+
+        " | "+(q?.term||"")+" / 問"+(i+1));
+    });
+    exportBox.value=lines.join("\n");exportBox.hidden=false;
+    panel.scrollIntoView({block:"start",behavior:"smooth"});
+  }
+  function finishExam(skipConfirmation=false){
+    if(!exam||examReviewMode)return;
+    const a=exam.attempt,score=scoreAttempt(a);
+    if(!skipConfirmation&&score.answered<12&&
+       !window.confirm((12-score.answered)+"問が未回答です。結果を表示しますか？"))return;
+    a.status="completed";a.finished=Date.now();a.result=score;
+    persistExam();showResult(a);refresh();renderRecent();
   }
   function refresh(){
-    const wrap=document.getElementById("houkiSessionCards");
-    if(!wrap)return;
+    const wrap=document.getElementById("houkiSessionCards");if(!wrap)return;
     wrap.querySelectorAll(".houki-exam-card").forEach(button=>{
-      const t=tally(button.dataset.prefix);
-      const isDone=t.answered===12;
+      const t=tally(button.dataset.prefix),isDone=t.answered===12;
       button.classList.toggle("done",isDone);
       const pct=Math.round(t.correct/12*100);
       button.querySelector(".houki-exam-progress").textContent=
         (isDone?"完了 ":"進捗 ")+t.answered+"/12 · 正解 "+t.correct+" ("+pct+"%)";
+    });
+  }
+  function renderRecent(){
+    const root=document.getElementById("houkiExamRecent");if(!root)return;
+    root.replaceChildren();
+    const all=Object.values(examDb.attempts).sort((a,b)=>b.savedAt-a.savedAt).slice(0,8);
+    if(!all.length){root.textContent="まだ試験回別の演習履歴はありません。";return}
+    all.forEach(a=>{
+      const sc=scoreAttempt(a),b=document.createElement("button");
+      b.type="button";b.className="houki-recent-row";
+      b.textContent=a.label+" · "+(a.status==="completed"?"完了":"途中")+
+        "　"+sc.correct+"/"+sc.answered+"　"+new Date(a.savedAt).toLocaleString();
+      b.onclick=()=>{
+        const entry=findEntry(a.prefix);
+        if(!entry)return;
+        if(a.status==="completed"){showResult(a);return}
+        start(entry,JSON.parse(JSON.stringify(a)));
+      };
+      root.append(b);
     });
   }
   function mount(){
@@ -263,7 +389,7 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     header.textContent="法規｜試験回から解く";
     const help=document.createElement("p");
     help.className="houki-exam-help";
-    help.textContent="試験回ごとに12問。出題・正答表示・自己採点は従来の法規演習を使用します。";
+    help.textContent="各回12問を自動採点。途中終了、問題移動、結果の保存・再開ができます。";
     const grid=document.createElement("div");
     grid.className="houki-exam-grid";
     for(const entry of entryList){
@@ -285,63 +411,81 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     const notice=document.createElement("p");
     notice.id="houkiSessionNotice";notice.setAttribute("aria-live","polite");
     wrap.append(header,help,grid,notice);
+    const recentTitle=document.createElement("h3");recentTitle.textContent="直近の演習";
+    const recent=document.createElement("div");recent.id="houkiExamRecent";
+    wrap.append(recentTitle,recent);
     const root=document.querySelector("main")||document.body;
     const answerBox=document.createElement("section");
     answerBox.id="houkiSessionAnswer";answerBox.hidden=true;
     answerBox.innerHTML='<p class="houki-answer-title">回答を選択</p>'+
-      '<p class="houki-answer-hint">上の選択肢を読んで、正しい番号を選んでください。</p>'+
+      '<p class="houki-progress-label"></p>'+
+      '<p class="houki-answer-hint">問題文と選択肢を読んで回答してください。</p>'+
       '<div class="houki-number-buttons" role="group" aria-label="解答番号"></div>'+
       '<p class="houki-answer-feedback" role="status" aria-live="polite"></p>'+
-      '<button type="button" class="houki-next-question" hidden>次の問題へ</button>';
+      '<div class="houki-jumps" role="group" aria-label="問題一覧"></div>'+
+      '<div class="houki-bottom-nav"><button type="button" class="houki-prev-question">前の問題</button>'+
+      '<button type="button" class="houki-next-question">次の問題</button></div>'+
+      '<button type="button" class="houki-finish-question">途中終了・結果を見る</button>'+
+      '<div class="houki-result-rows" hidden></div>'+
+      '<textarea class="houki-export" rows="7" readonly hidden></textarea>'+
+      '<button type="button" class="houki-copy" hidden>結果をコピー</button>';
     for(let n=1;n<=4;n++){
-      const btn=document.createElement("button");
-      btn.type="button";btn.dataset.answer=String(n);btn.textContent=String(n);
-      btn.setAttribute("aria-label",n+"番を回答");
-      btn.addEventListener("click",()=>answer(n));
-      answerBox.querySelector(".houki-number-buttons").append(btn);
+      const b=document.createElement("button");
+      b.type="button";b.dataset.answer=String(n);b.textContent=String(n);
+      b.setAttribute("aria-label",n+"番を回答");
+      b.onclick=()=>answer(n);answerBox.querySelector(".houki-number-buttons").append(b);
     }
-    answerBox.querySelector(".houki-next-question").addEventListener("click",()=>{
-      if(exam){nextInExam();return}
-      if(finishedEntry){
-        quitFixedMode();
-        const cards=document.getElementById("houkiSessionCards");
-        if(cards)cards.scrollIntoView({block:"start",behavior:"smooth"});
-      }
-    });
+    for(let i=0;i<12;i++){
+      const b=document.createElement("button");
+      b.type="button";b.textContent=String(i+1);b.setAttribute("aria-label","問"+(i+1));
+      b.onclick=()=>{if(exam&&!examReviewMode)showPosition(i)};
+      answerBox.querySelector(".houki-jumps").append(b);
+    }
+    answerBox.querySelector(".houki-next-question").onclick=()=>{
+      if(exam)nextInExam();
+      else{quitFixedMode();wrap.scrollIntoView({block:"start",behavior:"smooth"})}
+    };
+    answerBox.querySelector(".houki-prev-question").onclick=()=>{if(exam)showPosition(exam.pos-1)};
+    answerBox.querySelector(".houki-finish-question").onclick=()=>finishExam(false);
+    answerBox.querySelector(".houki-copy").onclick=()=>{
+      const value=answerBox.querySelector(".houki-export").value;
+      if(navigator.clipboard?.writeText)navigator.clipboard.writeText(value).catch(()=>{});
+    };
     // Place controls after all source options, never inside long choice text.
     const question=document.getElementById("qtext");
     if(question&&question.parentNode)question.insertAdjacentElement("afterend",answerBox);
     else wrap.append(answerBox);
     root.insertBefore(wrap,root.firstElementChild);
-    // Native self-grading calls draw() after marking: advance through this
-    // session's twelve questions, preserving original persistent records.
-    if(typeof draw==="function"){
-      const nativeDraw=draw;
-      draw=function(){if(exam){nextInExam();return}return nativeDraw()};
-    }
-    for(const id of ["next","skip"]){
-      const btn=document.getElementById(id);
-      if(btn)btn.addEventListener("click",e=>{
-        if(!exam)return;
-        e.preventDefault();e.stopImmediatePropagation();nextInExam();
-      },true);
-    }
+    // Native draw() remains available in the ordinary law study mode.
     const index=document.getElementById("tbody");
     if(index)index.addEventListener("click",()=>quitFixedMode(),true);
     document.querySelectorAll("#fterm,#fslotA,#fslotB,.fc,.ft,#tgroup,input[name=mode]").forEach(el=>
-      el.addEventListener("change",quitFixedMode));
+      el.addEventListener("change",()=>{if(exam)quitFixedMode()}));
     refresh();
     document.addEventListener("keydown",e=>{
-      if(!exam||e.altKey||e.ctrlKey||e.metaKey)return;
-      const target=e.target;
-      if(target&&target.closest&&target.closest('input,select,textarea,[contenteditable="true"]'))return;
+      if(!exam||e.altKey||e.ctrlKey||e.metaKey||e.isComposing)return;
+      const t=e.target;
+      if(t?.closest?.('input,textarea,select,[contenteditable="true"]'))return;
       if(/^[1-4]$/.test(e.key)){e.preventDefault();e.stopImmediatePropagation();answer(Number(e.key))}
-      else if((e.key==="Enter"||e.key===" ")&&exam.graded){
-        e.preventDefault();e.stopImmediatePropagation();nextInExam();
-      }else if(e.key===" "||e.key==="Enter"){
-        e.preventDefault();e.stopImmediatePropagation();
-      }
+      else if(e.key==="ArrowRight"){e.preventDefault();e.stopImmediatePropagation();nextInExam()}
+      else if(e.key==="ArrowLeft"){e.preventDefault();e.stopImmediatePropagation();showPosition(exam.pos-1)}
     },true);
+    // Extend the existing law state object rather than creating a parallel login.
+    // The matching Oracle merge must preserve the examV1 field.
+    if(typeof stateObject==="function"){
+      const oldStateObject=stateObject;
+      stateObject=function(){const o=oldStateObject();o.examV1=examDb;return o};
+    }
+    if(typeof applyState==="function"){
+      const oldApplyState=applyState;
+      applyState=function(o){
+        const result=oldApplyState(o);
+        if(o?.examV1){examDb=mergeExamDb(examDb,o.examV1);saveDbToLocal()}
+        refresh();renderRecent();
+        return result;
+      };
+    }
+    renderRecent();
     // Also captures updates arriving asynchronously from Oracle cloud sync.
     setInterval(refresh,2000);
   }
