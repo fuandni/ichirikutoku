@@ -1,10 +1,22 @@
-import importlib.util
+import ast
 from pathlib import Path
+from typing import Any, Dict
 
 path = Path(__file__).resolve().parents[1] / "server" / "app.py"
-spec = importlib.util.spec_from_file_location("ichirikutoku_app", path)
-app = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(app)
+source = ast.parse(path.read_text(encoding="utf-8"))
+names = {"safe_json_obj", "_int", "normalize_exam_v1", "merge_exam_v1",
+         "normalize_houki", "merge_houki"}
+nodes = [node for node in source.body
+         if isinstance(node, ast.FunctionDef) and node.name in names]
+namespace = {"Any": Any, "Dict": Dict}
+exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), namespace)
+
+class API:
+    pass
+
+app = API()
+for name in names:
+    setattr(app, name, namespace[name])
 
 def attempt(aid, when, answer=1):
     prefix = "JY50A-"
