@@ -7,6 +7,8 @@ on:
     paths:
       - "server/app.py"
       - "scripts/patch_houki_sync.py"
+      - "scripts/patch_houki_session_cards.py"
+      - "tests/test_houki_exam_v1.py"
       - ".github/workflows/deploy-houki-sync.yml"
   workflow_dispatch:
 
@@ -28,12 +30,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile server/app.py scripts/patch_houki_sync.py
+          python3 -m py_compile server/app.py scripts/patch_houki_sync.py scripts/patch_houki_session_cards.py tests/test_houki_exam_v1.py
+          python3 tests/test_houki_exam_v1.py
           rm -rf /tmp/houki-check
           mkdir -p /tmp/houki-check
           unzip -q ichirikutoku_oci_unified_no198_patched.zip -d /tmp/houki-check
           python3 scripts/patch_houki_sync.py /tmp/houki-check/ichirikutoku_unified/houki-practice/index.html
+          python3 scripts/patch_houki_session_cards.py /tmp/houki-check/ichirikutoku_unified/houki-practice/index.html
           grep -q "HOUKI_CLOUD_SYNC_V1" /tmp/houki-check/ichirikutoku_unified/houki-practice/index.html
+          grep -q "HOUKI_SESSION_CARDS_V1" /tmp/houki-check/ichirikutoku_unified/houki-practice/index.html
           python3 - <<'PY'
           import re
           from pathlib import Path
@@ -70,6 +75,7 @@ jobs:
           set -euo pipefail
           scp -i ~/.ssh/id_ed25519 server/app.py "opc@${OCI_HOST}:/home/opc/app.py.houki-upload"
           scp -i ~/.ssh/id_ed25519 scripts/patch_houki_sync.py "opc@${OCI_HOST}:/home/opc/patch_houki_sync.py"
+          scp -i ~/.ssh/id_ed25519 scripts/patch_houki_session_cards.py "opc@${OCI_HOST}:/home/opc/patch_houki_session_cards.py"
 
       - name: Install and verify on server
         shell: bash
@@ -92,10 +98,12 @@ jobs:
 
           sudo install -o ichirikutoku -g ichirikutoku -m 0644 /home/opc/app.py.houki-upload /opt/ichirikutoku/backend/app.py
           sudo python3 /home/opc/patch_houki_sync.py /var/www/ichirikutoku/houki-practice/index.html
+          sudo python3 /home/opc/patch_houki_session_cards.py /var/www/ichirikutoku/houki-practice/index.html
 
           sudo systemctl restart ichirikutoku
           sudo systemctl is-active --quiet ichirikutoku
           grep -q "HOUKI_CLOUD_SYNC_V1" /var/www/ichirikutoku/houki-practice/index.html
+          grep -q "HOUKI_SESSION_CARDS_V1" /var/www/ichirikutoku/houki-practice/index.html
 
           curl --fail --silent --retry 10 --retry-delay 1 --retry-connrefused http://127.0.0.1:8000/health >/dev/null
           test "$(curl --silent --retry 5 --retry-delay 1 --retry-connrefused --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/houki/state)" = "401"
@@ -104,7 +112,7 @@ jobs:
           COOKIE="$(mktemp)"
           trap 'rm -f "$COOKIE"' EXIT
           curl --insecure --fail --silent -c "$COOKIE" -H 'Content-Type: application/json' -d "$LOGIN_JSON" https://127.0.0.1/api/login >/dev/null
-          curl --insecure --fail --silent -b "$COOKIE" https://127.0.0.1/api/houki/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
+          curl --insecure --fail --silent -b "$COOKIE" https://127.0.0.1/api/houki/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x and "examV1" in x["state"]'
 
           curl --insecure --fail --silent -b "$COOKIE" https://127.0.0.1/api/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "db" in x and "updatedAt" in x'
           curl --insecure --fail --silent -b "$COOKIE" https://127.0.0.1/api/houki/state | python3 -c 'import json,sys; x=json.load(sys.stdin); assert "state" in x and "updatedAt" in x'
@@ -120,6 +128,7 @@ jobs:
           curl --fail --show-error --silent "https://${OCI_HOST}/health" >/dev/null
           curl --fail --show-error --silent "https://${OCI_HOST}/houki-practice/index.html" -o /tmp/houki-live.html
           grep -q "HOUKI_CLOUD_SYNC_V1" /tmp/houki-live.html
+          grep -q "HOUKI_SESSION_CARDS_V1" /tmp/houki-live.html
           CODE="$(curl --silent --output /dev/null --write-out '%{http_code}' "https://${OCI_HOST}/api/houki/state")"
           test "$CODE" = "401"
           echo "Public law sync verification OK"
