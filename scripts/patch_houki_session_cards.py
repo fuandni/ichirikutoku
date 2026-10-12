@@ -189,6 +189,9 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     box.hidden=!exam;
     if(!exam)return;
     box.querySelector(".houki-number-buttons").style.display="grid";
+    box.querySelector(".houki-result-rows").hidden=true;
+    box.querySelector(".houki-copy").hidden=true;
+    box.querySelector(".houki-export").hidden=true;
     box.querySelector(".houki-answer-title").textContent="回答を選択";
     box.querySelector(".houki-answer-hint").textContent="問題文と選択肢を読み、正しい番号を選んでください。";
     const r=safeObject(exam.attempt.answers[cur.id]);
@@ -242,12 +245,9 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     if(!cur||cur.id!==exam.ids[exam.pos])return;
     const correct=n===cur.a,now=Date.now(),id=cur.id;
     exam.attempt.answers[id]={choice:n,correct,time:now};
-    // Keep native law progress, review list and existing cloud sync intact.
-    rec[id]=correct?"o":"x";
-    const k=review.indexOf(id);
-    if(correct){if(k>=0)review.splice(k,1)}
-    else if(k<0)review.push(id);
-    stats();renderTable();revSummary();
+    // Delegate marking to the existing law-sync wrapper: it timestamps
+    // per-question updates in recAt and writes through the Oracle sync path.
+    mark(correct?"o":"x");
     paint(true);
     const ans=document.getElementById("ans");
     if(ans){ans.textContent=cur.a;ans.classList.remove("hidden")}
@@ -340,6 +340,7 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
         " | "+(q?.term||"")+" / 問"+(i+1));
     });
     exportBox.value=lines.join("\n");exportBox.hidden=false;
+    panel.querySelector(".houki-copy").hidden=false;
     panel.scrollIntoView({block:"start",behavior:"smooth"});
   }
   function finishExam(skipConfirmation=false){
@@ -456,6 +457,12 @@ body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
     if(question&&question.parentNode)question.insertAdjacentElement("afterend",answerBox);
     else wrap.append(answerBox);
     root.insertBefore(wrap,root.firstElementChild);
+    // Native mark() normally draws a new random item. Suppress only that
+    // automatic advance while the fixed exam engine controls navigation.
+    if(typeof draw==="function"){
+      const nativeDraw=draw;
+      draw=function(){if(exam)return;return nativeDraw()};
+    }
     // Native draw() remains available in the ordinary law study mode.
     const index=document.getElementById("tbody");
     if(index)index.addEventListener("click",()=>quitFixedMode(),true);
