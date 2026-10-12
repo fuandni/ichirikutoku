@@ -24,6 +24,25 @@ if not all(s in html for s in ('id="fterm"', 'id="fslotA"', 'id="fslotB"')):
 addition = r"""
 <style>
 /* HOUKI_SESSION_CARDS_V1 */
+
+/* Exam-session answer area: text choices remain in the original qtext view. */
+#houkiSessionAnswer{margin:16px 0 20px;padding:13px;background:#fff;border:1px solid #d7dee9;border-radius:12px;max-width:100%;min-width:0}
+#houkiSessionAnswer .houki-answer-title{font-weight:800;font-size:16px;margin:0 0 8px}
+#houkiSessionAnswer .houki-answer-hint{margin:0 0 10px;color:#475467;font-size:13px}
+#houkiSessionAnswer .houki-number-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+#houkiSessionAnswer .houki-number-buttons button{min-width:0;min-height:54px;border:2px solid #9daac0;background:#fff;color:#172554;border-radius:10px;font:800 24px/1.2 system-ui,sans-serif;cursor:pointer;touch-action:manipulation}
+#houkiSessionAnswer .houki-number-buttons button:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+#houkiSessionAnswer .houki-number-buttons button:disabled{opacity:1;cursor:default}
+#houkiSessionAnswer .houki-number-buttons button.houki-picked-correct,
+#houkiSessionAnswer .houki-number-buttons button.houki-right{background:#dcfce7;border-color:#15803d;color:#14532d}
+#houkiSessionAnswer .houki-number-buttons button.houki-picked-wrong{background:#fee2e2;border-color:#b91c1c;color:#7f1d1d}
+#houkiSessionAnswer .houki-answer-feedback{margin:12px 0 0;line-height:1.55;font-weight:750;overflow-wrap:anywhere}
+#houkiSessionAnswer .houki-next-question{display:block;width:100%;margin:12px 0 0;min-height:48px;border:1px solid #2457d6;background:#2457d6;color:#fff;border-radius:9px;font:750 17px/1.3 system-ui,sans-serif;cursor:pointer}
+#houkiSessionAnswer .houki-next-question[hidden]{display:none}
+body.houki-fixed-exam #reveal,body.houki-fixed-exam #mkok,body.houki-fixed-exam #mkng,
+body.houki-fixed-exam #next,body.houki-fixed-exam #skip{display:none!important}
+body.houki-fixed-exam #qtext{max-width:100%;min-width:0;overflow-wrap:anywhere}
+body.houki-fixed-exam #qtext .mobile-options{max-width:100%;min-width:0}
 #houkiSessionCards{max-width:1160px;margin:12px auto 20px;padding:12px;background:#f6f8fd;
  border:1px solid #dae0e9;border-radius:14px;color:#111827;box-sizing:border-box;
  font:inherit}
@@ -88,7 +107,8 @@ addition = r"""
   }
   function quitFixedMode(){
     if(!exam)return;
-    exam=null;activePrefix="";clearSelection();
+    exam=null;activePrefix="";document.body.classList.remove("houki-fixed-exam");clearSelection();
+    updateAnswerPanel();
     const notice=document.getElementById("houkiSessionNotice");
     if(notice)notice.textContent="試験回別モードを終了し、通常演習へ戻りました。";
   }
@@ -96,18 +116,59 @@ addition = r"""
     if(!exam)return;
     const item=ITEMS.find(x=>x.id===exam.ids[pos]);
     if(!item){quitFixedMode();return}
-    exam.pos=pos;
+    exam.pos=pos;exam.graded=false;
+    document.body.classList.add("houki-fixed-exam");
     show(item);
+    updateAnswerPanel();
     scrollQuestionTop();
     const notice=document.getElementById("houkiSessionNotice");
-    if(notice)notice.textContent=exam.entry.label+"：第"+(pos+1)+"/12問。採点すると次の問題へ進みます。";
+    if(notice)notice.textContent=exam.entry.label+"：第"+(pos+1)+"/12問。回答は問題文の下にある1〜4のボタンで選んでください。";
+  }
+  function updateAnswerPanel(choice=null){
+    const box=document.getElementById("houkiSessionAnswer");
+    if(!box)return;
+    box.hidden=!exam;
+    if(!exam)return;
+    const feedback=box.querySelector(".houki-answer-feedback");
+    const next=box.querySelector(".houki-next-question");
+    const graded=!!exam.graded;
+    box.querySelectorAll(".houki-number-buttons button").forEach(button=>{
+      const n=Number(button.dataset.answer);
+      button.disabled=graded;
+      button.classList.toggle("houki-picked-correct",graded&&n===choice&&choice===cur.a);
+      button.classList.toggle("houki-picked-wrong",graded&&n===choice&&choice!==cur.a);
+      button.classList.toggle("houki-right",graded&&n===cur.a&&choice!==cur.a);
+    });
+    feedback.textContent=graded?(choice===cur.a?"正解です。":"不正解です。")+" 正答は "+cur.a+" 番です。":"";
+    next.hidden=!graded;
+    next.textContent=exam.pos===11?"12問の結果へ":"次の問題へ";
+  }
+  function answer(n){
+    if(!exam||exam.graded||![1,2,3,4].includes(n))return;
+    if(!cur||cur.id!==exam.ids[exam.pos])return;
+    const correct=n===cur.a;
+    rec[cur.id]=correct?"o":"x";
+    const k=review.indexOf(cur.id);
+    if(correct){if(k>=0)review.splice(k,1)}
+    else if(k<0)review.push(cur.id);
+    exam.graded=true;
+    // Native grade path: keep browser storage, cloud sync, review list and statistics.
+    stats();renderTable();revSummary();persist();
+    paint(true);
+    const ans=document.getElementById("ans");
+    if(ans){ans.textContent=cur.a;ans.classList.remove("hidden")}
+    document.getElementById("reveal").disabled=true;
+    document.getElementById("mkok").disabled=true;
+    document.getElementById("mkng").disabled=true;
+    updateAnswerPanel(n);
+    refresh();
   }
   function nextInExam(){
     if(!exam)return;
     const next=exam.pos+1;
     if(next>=12){
       const entry=exam.entry,score=tally(entry.prefix);
-      exam=null;
+      exam=null;document.body.classList.remove("houki-fixed-exam");updateAnswerPanel();
       const notice=document.getElementById("houkiSessionNotice");
       if(notice)notice.textContent=entry.label+" の出題終了。記録 "+score.answered+"/12問、正解 "+score.correct+"/12問。未回答があればカードから再開できます。";
       refresh();return;
@@ -209,6 +270,25 @@ addition = r"""
     notice.id="houkiSessionNotice";notice.setAttribute("aria-live","polite");
     wrap.append(header,help,grid,notice);
     const root=document.querySelector("main")||document.body;
+    const answerBox=document.createElement("section");
+    answerBox.id="houkiSessionAnswer";answerBox.hidden=true;
+    answerBox.innerHTML='<p class="houki-answer-title">回答を選択</p>'+
+      '<p class="houki-answer-hint">上の選択肢を読んで、正しい番号を選んでください。</p>'+
+      '<div class="houki-number-buttons" role="group" aria-label="解答番号"></div>'+
+      '<p class="houki-answer-feedback" role="status" aria-live="polite"></p>'+
+      '<button type="button" class="houki-next-question" hidden>次の問題へ</button>';
+    for(let n=1;n<=4;n++){
+      const btn=document.createElement("button");
+      btn.type="button";btn.dataset.answer=String(n);btn.textContent=String(n);
+      btn.setAttribute("aria-label",n+"番を回答");
+      btn.addEventListener("click",()=>answer(n));
+      answerBox.querySelector(".houki-number-buttons").append(btn);
+    }
+    answerBox.querySelector(".houki-next-question").addEventListener("click",nextInExam);
+    // Place controls after all source options, never inside long choice text.
+    const question=document.getElementById("qtext");
+    if(question&&question.parentNode)question.insertAdjacentElement("afterend",answerBox);
+    else wrap.append(answerBox);
     root.insertBefore(wrap,root.firstElementChild);
     // Native self-grading calls draw() after marking: advance through this
     // session's twelve questions, preserving original persistent records.
@@ -228,6 +308,17 @@ addition = r"""
     document.querySelectorAll("#fterm,#fslotA,#fslotB,.fc,.ft,#tgroup,input[name=mode]").forEach(el=>
       el.addEventListener("change",quitFixedMode));
     refresh();
+    document.addEventListener("keydown",e=>{
+      if(!exam||e.altKey||e.ctrlKey||e.metaKey)return;
+      const target=e.target;
+      if(target&&target.closest&&target.closest('input,select,textarea,[contenteditable="true"]'))return;
+      if(/^[1-4]$/.test(e.key)){e.preventDefault();e.stopImmediatePropagation();answer(Number(e.key))}
+      else if((e.key==="Enter"||e.key===" ")&&exam.graded){
+        e.preventDefault();e.stopImmediatePropagation();nextInExam();
+      }else if(e.key===" "||e.key==="Enter"){
+        e.preventDefault();e.stopImmediatePropagation();
+      }
+    },true);
     // Also captures updates arriving asynchronously from Oracle cloud sync.
     setInterval(refresh,2000);
   }
