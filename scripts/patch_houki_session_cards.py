@@ -69,15 +69,50 @@ addition = r"""
   const entryList=sessions.flatMap(s=>["A","B"].map(slot=>({
     label:s.label+" "+slot,term:s.label+"期",slot:slot,prefix:"JY"+s.p+slot+"-"
   })));
-  let activePrefix="";
+  let activePrefix="",exam=null;
   function records(){try{return typeof rec==="object"&&rec?rec:{}}catch(e){return {}}}
-  function count(prefix){
-    const r=records();let n=0;
+  function tally(prefix){
+    const r=records();let answered=0,correct=0,wrong=0;
     for(let q=1;q<=12;q++){
       const id=prefix+String(q).padStart(2,"0");
-      if(Object.prototype.hasOwnProperty.call(r,id)&&r[id]!=null)n++;
+      if(!Object.prototype.hasOwnProperty.call(r,id))continue;
+      if(r[id]==="o"){answered++;correct++}
+      else if(r[id]==="x"){answered++;wrong++}
     }
-    return n;
+    return {answered,correct,wrong};
+  }
+  function clearSelection(){
+    document.querySelectorAll("#houkiSessionCards .houki-exam-card").forEach(b=>{
+      b.classList.remove("selected");b.setAttribute("aria-pressed","false");
+    });
+  }
+  function quitFixedMode(){
+    if(!exam)return;
+    exam=null;activePrefix="";clearSelection();
+    const notice=document.getElementById("houkiSessionNotice");
+    if(notice)notice.textContent="試験回別モードを終了し、通常演習へ戻りました。";
+  }
+  function showPosition(pos){
+    if(!exam)return;
+    const item=ITEMS.find(x=>x.id===exam.ids[pos]);
+    if(!item){quitFixedMode();return}
+    exam.pos=pos;
+    show(item);
+    scrollQuestionTop();
+    const notice=document.getElementById("houkiSessionNotice");
+    if(notice)notice.textContent=exam.entry.label+"：第"+(pos+1)+"/12問。採点すると次の問題へ進みます。";
+  }
+  function nextInExam(){
+    if(!exam)return;
+    const next=exam.pos+1;
+    if(next>=12){
+      const entry=exam.entry,score=tally(entry.prefix);
+      exam=null;
+      const notice=document.getElementById("houkiSessionNotice");
+      if(notice)notice.textContent=entry.label+" の出題終了。記録 "+score.answered+"/12問、正解 "+score.correct+"/12問。未回答があればカードから再開できます。";
+      refresh();return;
+    }
+    showPosition(next);
   }
   function signal(el){el.dispatchEvent(new Event("change",{bubbles:true}))}
   function setChecked(el,val){
@@ -85,18 +120,15 @@ addition = r"""
     el.checked=val;signal(el);
   }
   function resetFilters(){
-    // A fixed twelve-question exam must not inherit topic/difficulty filters.
     const topic=document.getElementById("tgroup");
     if(topic&&topic.tagName==="SELECT"&&topic.selectedIndex!==0){
       topic.selectedIndex=0;signal(topic);
     }
-    for(const id of ["fcat","ftier"]){
-      const root=document.getElementById(id);
-      if(!root)continue;
-      root.querySelectorAll('input[type="checkbox"]').forEach(el=>setChecked(el,true));
-    }
+    // These are the native law app's actual category and frequency controls.
+    document.querySelectorAll(".fc,.ft").forEach(el=>setChecked(el,true));
   }
   function start(entry){
+    exam=null;
     const term=document.getElementById("fterm");
     const a=document.getElementById("fslotA");
     const b=document.getElementById("fslotB");
@@ -106,43 +138,42 @@ addition = r"""
       return;
     }
     const opt=Array.from(term.options).find(o=>o.textContent.trim()===entry.term);
-    if(!opt){
-      notice.textContent=entry.term+" はこの問題集に登録されていません。";
-      return;
-    }
+    if(!opt){notice.textContent=entry.term+" はこの問題集に登録されていません。";return}
     resetFilters();
     term.value=opt.value;signal(term);
-    setChecked(a,entry.slot==="A");
-    setChecked(b,entry.slot==="B");
-    const unseen=document.getElementById("unseen");
-    if(unseen&&unseen.type==="radio"&&!unseen.checked){unseen.checked=true;signal(unseen)}
+    setChecked(a,entry.slot==="A");setChecked(b,entry.slot==="B");
+    const unseen=document.querySelector('input[name="mode"][value="unseen"]');
+    if(unseen&&!unseen.checked){unseen.checked=true;signal(unseen)}
     activePrefix=entry.prefix;
-    document.querySelectorAll("#houkiSessionCards button.houki-exam-card").forEach(button=>{
-      button.classList.toggle("selected",button.dataset.prefix===activePrefix);
-      button.setAttribute("aria-pressed",button.dataset.prefix===activePrefix?"true":"false");
+    clearSelection();
+    document.querySelectorAll("#houkiSessionCards .houki-exam-card").forEach(button=>{
+      if(button.dataset.prefix===activePrefix){
+        button.classList.add("selected");button.setAttribute("aria-pressed","true");
+      }
     });
-    notice.textContent=entry.label+" を選択しました。既存の進捗・同期を引き継いで12問を演習します。";
-    // Keep the native question renderer and self-grading behavior intact.
-    const pick=Array.from(document.querySelectorAll("button")).find(button=>
-      button.closest("#houkiSessionCards")===null && /出題する/.test(button.textContent||""));
-    if(pick){
-      pick.click();
-      const box=document.getElementById("sheetlabel")||pick;
-      box.scrollIntoView({block:"start",behavior:"smooth"});
-    }else{
-      const box=document.getElementById("sheetlabel")||term;
-      box.scrollIntoView({block:"start",behavior:"smooth"});
-      notice.textContent+=" 「出題する」ボタンを押して始めてください。";
+    // Use the existing question data and renderer. Avoid random repeats inside a set.
+    const ids=Array.from({length:12},(_,i)=>entry.prefix+String(i+1).padStart(2,"0"));
+    if(typeof ITEMS==="undefined"||typeof show!=="function"||
+       ids.some(id=>!ITEMS.some(item=>item.id===id))){
+      notice.textContent="12問のデータを確認できません。元の法規演習から出題してください。";
+      return;
     }
+    const r=records();
+    const firstMissing=ids.findIndex(id=>r[id]!=="o"&&r[id]!=="x");
+    exam={entry,ids,pos:-1};
+    showPosition(firstMissing>=0?firstMissing:0);
+    refresh();
   }
   function refresh(){
     const wrap=document.getElementById("houkiSessionCards");
     if(!wrap)return;
     wrap.querySelectorAll(".houki-exam-card").forEach(button=>{
-      const n=count(button.dataset.prefix);
-      const isDone=n===12;
+      const t=tally(button.dataset.prefix);
+      const isDone=t.answered===12;
       button.classList.toggle("done",isDone);
-      button.querySelector(".houki-exam-progress").textContent=(isDone?"完了 ":"記録 ")+n+"/12 ("+Math.round(n/12*100)+"%)";
+      const pct=Math.round(t.correct/12*100);
+      button.querySelector(".houki-exam-progress").textContent=
+        (isDone?"完了 ":"進捗 ")+t.answered+"/12 · 正解 "+t.correct+" ("+pct+"%)";
     });
   }
   function mount(){
@@ -179,6 +210,23 @@ addition = r"""
     wrap.append(header,help,grid,notice);
     const root=document.querySelector("main")||document.body;
     root.insertBefore(wrap,root.firstElementChild);
+    // Native self-grading calls draw() after marking: advance through this
+    // session's twelve questions, preserving original persistent records.
+    if(typeof draw==="function"){
+      const nativeDraw=draw;
+      draw=function(){if(exam){nextInExam();return}return nativeDraw()};
+    }
+    for(const id of ["next","skip"]){
+      const btn=document.getElementById(id);
+      if(btn)btn.addEventListener("click",e=>{
+        if(!exam)return;
+        e.preventDefault();e.stopImmediatePropagation();nextInExam();
+      },true);
+    }
+    const index=document.getElementById("tbody");
+    if(index)index.addEventListener("click",()=>quitFixedMode(),true);
+    document.querySelectorAll("#fterm,#fslotA,#fslotB,.fc,.ft,#tgroup,input[name=mode]").forEach(el=>
+      el.addEventListener("change",quitFixedMode));
     refresh();
     // Also captures updates arriving asynchronously from Oracle cloud sync.
     setInterval(refresh,2000);
