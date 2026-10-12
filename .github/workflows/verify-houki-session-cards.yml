@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "scripts/patch_houki_session_cards.py"
+      - "scripts/patch_houki_redesign.py"
       - ".github/workflows/verify-houki-session-cards.yml"
   workflow_dispatch:
 
@@ -26,16 +27,19 @@ jobs:
       - name: Patch twice and verify original controls and JavaScript
         run: |
           set -euo pipefail
-          python3 -m py_compile scripts/patch_houki_session_cards.py scripts/patch_houki_sync.py
+          python3 -m py_compile scripts/patch_houki_session_cards.py scripts/patch_houki_sync.py scripts/patch_houki_redesign.py
           PAGE=/tmp/ichiriku-houki/ichirikutoku_unified/houki-practice/index.html
           python3 scripts/patch_houki_sync.py "$PAGE"
           python3 scripts/patch_houki_session_cards.py "$PAGE"
           python3 scripts/patch_houki_session_cards.py "$PAGE"
+          python3 scripts/patch_houki_redesign.py "$PAGE"
+          python3 scripts/patch_houki_redesign.py "$PAGE"
           PAGE="$PAGE" python3 - <<'PY'
           import os,re
           from pathlib import Path
           html=Path(os.environ["PAGE"]).read_text(encoding="utf-8")
           assert html.count("/* HOUKI_SESSION_CARDS_V1 */")==2, "session patch was applied twice"
+          assert html.count("/* HOUKI_MODERN_UI_V1 */")==2, "modern UI patch was applied twice"
           assert "HOUKI_CLOUD_SYNC_V1" in html, "law cloud sync plugin missing"
           for control in ('id="fterm"','id="fslotA"','id="fslotB"'):
               assert control in html, f"original control missing: {control}"
@@ -45,6 +49,15 @@ jobs:
           print("Law page patched; original form controls are preserved.")
           PY
           node --check /tmp/houki-exam-cards.js
+          PAGE="$PAGE" python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+          s=Path(os.environ["PAGE"]).read_text(encoding="utf-8")
+          scripts=re.findall(r'<script>\s*/\* HOUKI_MODERN_UI_V1 \*/(.*?)</script>',s,re.S)
+          assert len(scripts)==1
+          Path("/tmp/houki-modern.js").write_text(scripts[0],encoding="utf-8")
+          PY
+          node --check /tmp/houki-modern.js
 
 
       - name: Inspect native law record and picker shape (no data modification)
@@ -105,6 +118,17 @@ jobs:
             try{
               const cards=[...document.querySelectorAll('#houkiSessionCards .houki-exam-card')];
               ok(cards.length===18,"18 cards present");
+              const modern=document.getElementById("houkiModernUI");
+              const home=document.getElementById("houkiModernHome");
+              const examStage=document.getElementById("houkiModernExam");
+              const legacy=document.querySelector("body > .wrap");
+              ok(!!modern && !!home && !!examStage,"fresh exam-first layout mounted");
+              ok(document.body.classList.contains("houki-redesigned"),"modern mode active");
+              ok(legacy && getComputedStyle(legacy).display==="none","all legacy practice sections hidden");
+              ok(home.contains(cards[0]),"session grid lives inside new home");
+              ok(examStage.contains(document.getElementById("sheet")),"native question surface moved into new exam");
+              ok(examStage.contains(document.getElementById("houkiSessionAnswer")),"numeric answer panel in new exam");
+              ok(examStage.hidden && !home.hidden,"initial view shows only new home");
               let maxChoice=0, maxId="",optionless=0,answerErrors=0;
               for(const it of ITEMS){
                 const d=QT[it.file][it.n];
@@ -121,6 +145,7 @@ jobs:
               ok(ITEMS.length===216,"216 law items");
               ok(answerErrors===0,"all answers and question texts valid");
               cards[0].click();
+              ok(!examStage.hidden && home.hidden,"exam replaces home, no duplicate legacy view");
               ok(cur.id==="JY50A-01","first question in original order: "+cur.id);
               const panel=document.getElementById("houkiSessionAnswer");
               ok(panel&&!panel.hidden,"numeric-choice panel visible");
@@ -147,6 +172,7 @@ jobs:
               ok(cards[0].querySelector(".houki-exam-progress").textContent.includes("正解 11"),"card tally matches");
               panel.querySelector(".houki-next-question").click();
               ok(panel.hidden,"returns to session list");
+              ok(!home.hidden && examStage.hidden,"result navigation restores modern home");
               ok(!document.body.classList.contains("houki-fixed-exam"),"standard quiz restored");
               ok(document.querySelector("#houkiExamRecent").textContent.includes("令和5年10月"),"session history stored");
               // Engineering v1 parity: previous/next, jump and unfinished resume.
