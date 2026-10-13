@@ -1,0 +1,90 @@
+name: Route public SA path to validated 550-question release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-sa-public-route.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ichirikutoku-production
+  cancel-in-progress: false
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Configure pinned SSH
+        shell: bash
+        env:
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -t ed25519 "$OCI_HOST" > /tmp/oci_ed25519
+          ACTUAL="$(ssh-keygen -lf /tmp/oci_ed25519 -E sha256 | awk '{print $2}')"
+          test "$ACTUAL" = "SHA256:WGNqmz/giwW4QexkH1gE+9UJ0t7nQmyPXrH/Bbf5gow"
+          cp /tmp/oci_ed25519 ~/.ssh/known_hosts
+
+      - name: Backup old SA public directory and link to standalone release
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 "opc@${OCI_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          LIVE=/var/www/ichirikutoku/sa
+          CURRENT=/var/www/sa
+          sudo test -f "$CURRENT/index.html"
+          sudo test -f "$CURRENT/data/app_config.js"
+          grep -q '"expected_question_count": 250' "$CURRENT/data/app_config.js"
+          grep -q '"expected_question_count": 300' "$CURRENT/data/app_config.js"
+          if test -L "$LIVE" && test "$(readlink -f "$LIVE")" = "$CURRENT"; then
+            echo "Existing public SA symlink is correct"
+            exit 0
+          fi
+          TS="$(date +%Y%m%d-%H%M%S)"
+          BACKUP="/var/www/ichirikutoku/sa.backup-before-550-$TS"
+          sudo test -e "$LIVE"
+          sudo mv "$LIVE" "$BACKUP"
+          sudo ln -s "$CURRENT" "$LIVE"
+          if ! sudo nginx -t; then
+            sudo rm "$LIVE"
+            sudo mv "$BACKUP" "$LIVE"
+            exit 1
+          fi
+          if ! curl -kfsS -H 'Host: 152.69.205.67' \
+                 https://127.0.0.1/sa/data/app_config.js \
+                 | grep -q '"expected_question_count": 300'; then
+            sudo rm "$LIVE"
+            sudo mv "$BACKUP" "$LIVE"
+            echo "Local public 550 test failed; restored old SA directory"
+            exit 1
+          fi
+          echo "Public /sa now resolves to 550-question standalone deployment"
+          REMOTE
+
+      - name: Verify live SA and home card
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 6 --retry-delay 3 \
+            'https://152.69.205.67/sa/data/app_config.js?routefix=20261013' \
+            -o /tmp/live-sa-config.js
+          grep -q '"expected_question_count": 250' /tmp/live-sa-config.js
+          grep -q '"expected_question_count": 300' /tmp/live-sa-config.js
+          curl -fsS --retry 6 --retry-delay 3 \
+            'https://152.69.205.67/home/index.html?routefix=20261013' \
+            -o /tmp/live-sa-home.html
+          grep -q 'id="sa-morning-db-card"' /tmp/live-sa-home.html
+          grep -q 'href="/sa/"' /tmp/live-sa-home.html
+          echo "PASS: public home -> /sa/ now serves 550 questions"
