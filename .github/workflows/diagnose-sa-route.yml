@@ -1,0 +1,52 @@
+name: Diagnose SA public route (read only)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-sa-route.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check public config counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 https://152.69.205.67/sa/data/app_config.js -o /tmp/public-sa-config.js
+          echo "Public /sa/ question counts:"
+          grep -oE '"expected_question_count": [0-9]+' /tmp/public-sa-config.js
+
+      - name: Connect to production (read only)
+        shell: bash
+        env:
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -t ed25519 "$OCI_HOST" > /tmp/oci_ed25519
+          ACTUAL="$(ssh-keygen -lf /tmp/oci_ed25519 -E sha256 | awk '{print $2}')"
+          test "$ACTUAL" = "SHA256:WGNqmz/giwW4QexkH1gE+9UJ0t7nQmyPXrH/Bbf5gow"
+          cp /tmp/oci_ed25519 ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_ed25519 "opc@${OCI_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          for p in /var/www/sa/data/app_config.js /var/www/ichirikutoku/sa/data/app_config.js; do
+            if test -f "$p"; then
+              echo "$p"
+              grep -oE '"expected_question_count": [0-9]+' "$p" || true
+              sha256sum "$p"
+            else
+              echo "MISSING: $p"
+            fi
+          done
+          echo "Nginx SA route excerpts:"
+          sudo nginx -T 2>/dev/null | grep -E -A 7 -B 2 'location (\^~ )?/sa/|alias /var/www/.*/sa|root /var/www/' | head -100 || true
+          REMOTE
