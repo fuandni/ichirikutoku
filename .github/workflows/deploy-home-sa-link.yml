@@ -1,0 +1,110 @@
+name: Deploy System Architect link to home
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/patch_home_sa_link.py"
+      - ".github/workflows/deploy-home-sa-link.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ichirikutoku-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-home-link:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight against real public home
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/patch_home_sa_link.py
+          curl -fsS --retry 4 --retry-delay 2 \
+            https://152.69.205.67/home/index.html -o /tmp/sa-home-before.html
+          cp /tmp/sa-home-before.html /tmp/sa-home-after.html
+          python3 scripts/patch_home_sa_link.py /tmp/sa-home-after.html
+          python3 scripts/patch_home_sa_link.py /tmp/sa-home-after.html
+          python3 - <<'PY'
+          from pathlib import Path
+          a=Path('/tmp/sa-home-before.html').read_text(encoding='utf-8')
+          b=Path('/tmp/sa-home-after.html').read_text(encoding='utf-8')
+          assert b.count('id="sa-morning-db-card"') == 1
+          assert 'href="/sa/"' in b
+          assert 'システムアーキテクト・午前過去問' in b
+          assert '法規・試験回別演習' in b and '無線工学 v1' in b and '無線工学 v2' in b
+          increment = 0 if 'id="sa-morning-db-card"' in a else 1
+          assert b.count('<a ') == a.count('<a ') + increment
+          print('PASS: home cards preserved; new SA link is idempotent')
+          PY
+          curl -fsS --retry 4 --retry-delay 2 \
+            https://152.69.205.67/sa/data/app_config.js -o /tmp/sa-config.js
+          grep -q 'SA_APP_CONFIG' /tmp/sa-config.js
+
+      - name: Configure pinned SSH host
+        shell: bash
+        env:
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -t ed25519 "$OCI_HOST" > /tmp/oci_ed25519
+          ACTUAL="$(ssh-keygen -lf /tmp/oci_ed25519 -E sha256 | awk '{print $2}')"
+          EXPECTED="SHA256:WGNqmz/giwW4QexkH1gE+9UJ0t7nQmyPXrH/Bbf5gow"
+          test "$ACTUAL" = "$EXPECTED"
+          cp /tmp/oci_ed25519 ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload home patch
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/id_ed25519 scripts/patch_home_sa_link.py \
+            "opc@${OCI_HOST}:/home/opc/patch_home_sa_link.py"
+
+      - name: Backup and update ONLY home index
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 "opc@${OCI_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          FILE=/var/www/ichirikutoku/home/index.html
+          TS="$(date +%Y%m%d-%H%M%S)"
+          sudo test -f "$FILE"
+          sudo cp -a "$FILE" "$FILE.bak-sa-$TS"
+          sudo python3 /home/opc/patch_home_sa_link.py "$FILE"
+          sudo grep -q 'id="sa-morning-db-card"' "$FILE"
+          sudo grep -q 'href="/sa/"' "$FILE"
+          sudo nginx -t
+          REMOTE
+
+      - name: Verify public link
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 6 --retry-delay 2 \
+            'https://152.69.205.67/home/index.html?after-sa-link=20261013' \
+            -o /tmp/sa-home-deployed.html
+          python3 - <<'PY'
+          from pathlib import Path
+          t=Path('/tmp/sa-home-deployed.html').read_text(encoding='utf-8')
+          assert t.count('id="sa-morning-db-card"') == 1
+          assert 'href="/sa/"' in t
+          assert 'システムアーキテクト・午前過去問' in t
+          assert '法規・試験回別演習' in t
+          print('PASS: production home links to /sa/')
+          PY
