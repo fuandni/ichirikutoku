@@ -58,18 +58,45 @@ def patch(html: str) -> str:
     return updated
 
 
+def patch_focus(html: str) -> str:
+    """Add a separate link card for the relocated SA focus exercises."""
+    focus_id = 'id="sa-focus-card"'
+    if focus_id in html:
+        if html.count(focus_id) != 1 or 'href="/home/focus/"' not in html:
+            raise ValueError("Existing SA focus card is malformed")
+        return html
+    anchors = list(re.finditer(r"<a\\b[^>]*>.*?</a\\s*>", html, re.I | re.S))
+    matches = [m for m in anchors if CARD_ID in m.group(0)]
+    if len(matches) != 1:
+        raise ValueError("Expected one SA morning card before adding focus link")
+    src = matches[0].group(0)
+    dest = src.replace(CARD_ID, focus_id, 1).replace('href="/sa/"', 'href="/home/focus/"', 1)
+    dest = dest.replace("システムアーキテクト・午前過去問", "SA・弱点集中演習", 1)
+    dest = dest.replace(
+        "午前I・午前IIを年度別に演習。成績や学習履歴も管理。",
+        "基礎・応用・計算問題を6分野別に演習。進捗と苦手を記録。", 1,
+    )
+    if dest == src or 'href="/home/focus/"' not in dest:
+        raise ValueError("Unable to construct focus card")
+    updated = html[:matches[0].end()] + "\n" + dest + html[matches[0].end():]
+    updated = updated.replace("6教材を1階層で直接選択。", "7教材を1階層で直接選択。")
+    if updated.count(focus_id) != 1:
+        raise ValueError("Focus card insertion failed")
+    return updated
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit("Usage: patch_home_sa_link.py /path/to/home/index.html")
     path = Path(sys.argv[1])
     before = path.read_text(encoding="utf-8")
-    after = patch(before)
+    after = patch_focus(patch(before))
     if after != before:
         path.write_text(after, encoding="utf-8")
         print("Added System Architect card to /home")
     else:
         print("System Architect card already installed")
-    assert patch(after) == after
+    assert patch_focus(patch(after)) == after
 
 
 if __name__ == "__main__":
