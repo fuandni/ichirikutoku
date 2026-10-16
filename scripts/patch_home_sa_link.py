@@ -65,7 +65,7 @@ def patch_focus(html: str) -> str:
         if html.count(focus_id) != 1 or 'href="/home/focus/"' not in html:
             raise ValueError("Existing SA focus card is malformed")
         return html
-    anchors = list(re.finditer(r"<a\\b[^>]*>.*?</a\\s*>", html, re.I | re.S))
+    anchors = list(re.finditer(r"<a\b[^>]*>.*?</a\s*>", html, re.I | re.S))
     matches = [m for m in anchors if CARD_ID in m.group(0)]
     if len(matches) != 1:
         raise ValueError("Expected one SA morning card before adding focus link")
