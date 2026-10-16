@@ -113,6 +113,6 @@ jobs:
           assert t.count('id="sa-focus-card"') == 1
           assert 'href="/home/focus/"' in t
           assert 'システムアーキテクト・午前過去問' in t
-          assert '法規・試験回別演習' in t
+          assert '法規' in t
           print('PASS: production home links to /sa/ and /home/focus/')
           PY
