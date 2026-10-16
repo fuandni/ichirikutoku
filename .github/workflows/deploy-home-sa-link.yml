@@ -39,14 +39,18 @@ jobs:
           assert b.count('id="sa-morning-db-card"') == 1
           assert 'href="/sa/"' in b
           assert 'システムアーキテクト・午前過去問' in b
+          assert b.count('id="sa-focus-card"') == 1
+          assert 'href="/home/focus/"' in b
           assert '法規・試験回別演習' in b and '無線工学 v1' in b and '無線工学 v2' in b
-          increment = 0 if 'id="sa-morning-db-card"' in a else 1
+          increment = (0 if 'id="sa-morning-db-card"' in a else 1) + (0 if 'id="sa-focus-card"' in a else 1)
           assert b.count('<a ') == a.count('<a ') + increment
           print('PASS: home cards preserved; new SA link is idempotent')
           PY
           curl -fsS --retry 4 --retry-delay 2 \
             https://152.69.205.67/sa/data/app_config.js -o /tmp/sa-config.js
           grep -q 'SA_APP_CONFIG' /tmp/sa-config.js
+          curl -fsS --retry 4 --retry-delay 2 https://152.69.205.67/home/focus/index.html -o /tmp/sa-focus-index.html
+          grep -q 'focus-app' /tmp/sa-focus-index.html
 
       - name: Configure pinned SSH host
         shell: bash
@@ -89,6 +93,8 @@ jobs:
           sudo python3 /home/opc/patch_home_sa_link.py "$FILE"
           sudo grep -q 'id="sa-morning-db-card"' "$FILE"
           sudo grep -q 'href="/sa/"' "$FILE"
+          sudo grep -q 'id="sa-focus-card"' "$FILE"
+          sudo grep -q 'href="/home/focus/"' "$FILE"
           sudo nginx -t
           REMOTE
 
@@ -104,7 +110,9 @@ jobs:
           t=Path('/tmp/sa-home-deployed.html').read_text(encoding='utf-8')
           assert t.count('id="sa-morning-db-card"') == 1
           assert 'href="/sa/"' in t
+          assert t.count('id="sa-focus-card"') == 1
+          assert 'href="/home/focus/"' in t
           assert 'システムアーキテクト・午前過去問' in t
           assert '法規・試験回別演習' in t
-          print('PASS: production home links to /sa/')
+          print('PASS: production home links to /sa/ and /home/focus/')
           PY
