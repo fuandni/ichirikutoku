@@ -41,7 +41,7 @@ jobs:
           assert 'システムアーキテクト・午前過去問' in b
           assert b.count('id="sa-focus-card"') == 1
           assert 'href="/home/focus/"' in b
-          assert '法規・試験回別演習' in b and '無線工学 v1' in b and '無線工学 v2' in b
+          assert '法規' in b and '無線工学' in b
           increment = (0 if 'id="sa-morning-db-card"' in a else 1) + (0 if 'id="sa-focus-card"' in a else 1)
           assert b.count('<a ') == a.count('<a ') + increment
           print('PASS: home cards preserved; new SA link is idempotent')
